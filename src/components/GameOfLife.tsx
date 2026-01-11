@@ -143,11 +143,21 @@ interface GameOfLifeProps {
     enableUI?: boolean;
 }
 
+const calculateGridDimensions = () => {
+    // 20px cell size
+    const cols = Math.floor(window.innerWidth / 20);
+    const rows = Math.floor(window.innerHeight / 20);
+    return { rows, cols };
+};
+
 const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
   // --- State ---
-  const [numRows, setNumRows] = useState(40);
-  const [numCols, setNumCols] = useState(50);
-  const [grid, setGrid] = useState<GridType>(() => generateEmptyGrid(40, 50));
+  const [numRows, setNumRows] = useState(() => calculateGridDimensions().rows);
+  const [numCols, setNumCols] = useState(() => calculateGridDimensions().cols);
+  const [grid, setGrid] = useState<GridType>(() => {
+      const dim = calculateGridDimensions();
+      return generateEmptyGrid(dim.rows, dim.cols);
+  });
   
   const [running, setRunning] = useState(false);
   const [generation, setGeneration] = useState(0);
