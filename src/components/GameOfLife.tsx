@@ -473,6 +473,7 @@ const GameOfLife: React.FC = () => {
             </button>
             <button className="hud-btn" onClick={handleNextStep} disabled={running}>STEP</button>
             <button className="hud-btn" onClick={handleUndo} disabled={running || historyLength === 0}>UNDO</button>
+            <button className="hud-btn" onClick={handleRandomize}>RANDOM</button>
           </div>
 
           <div className="hud-divider"></div>
@@ -510,6 +511,18 @@ const GameOfLife: React.FC = () => {
           <div className="hud-divider"></div>
 
           <div className="hud-group">
+               <select 
+                    className="hud-select"
+                    value={waveform} 
+                    onChange={(e) => setWaveform(e.target.value as OscillatorType)}
+                    style={{marginRight: '0.5rem', marginLeft: 0}}
+                    title="Sound Waveform"
+                >
+                    <option value="sine">Sine</option>
+                    <option value="triangle">Triangle</option>
+                    <option value="square">Square</option>
+                    <option value="sawtooth">Saw</option>
+                </select>
                <span className="hud-stat">GEN: {generation}</span>
                <button 
                   className={`hud-btn icon ${showSettings ? 'active' : ''}`} 
@@ -602,20 +615,9 @@ const GameOfLife: React.FC = () => {
                         style={{flex:1}}
                       />
                   </div>
-                  <select 
-                        value={waveform} 
-                        onChange={(e) => setWaveform(e.target.value as OscillatorType)}
-                        style={{marginTop: '0.5rem'}}
-                    >
-                        <option value="sine">Sine</option>
-                        <option value="triangle">Triangle</option>
-                        <option value="square">Square</option>
-                        <option value="sawtooth">Saw</option>
-                    </select>
               </div>
 
               <div className="setting-item actions">
-                  <button onClick={handleRandomize}>Randomize</button>
                   <button onClick={handleClear} className="danger">Clear Board</button>
               </div>
           </div>
