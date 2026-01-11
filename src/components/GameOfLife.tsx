@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, memo } from 'react';
 import { soundEngine } from '../utils/SoundEngine';
 
 // --- Types & Constants ---
@@ -58,7 +58,74 @@ const generateEmptyGrid = (rows: number, cols: number): GridType => {
   return Array.from({ length: rows }, () => Array(cols).fill(0));
 };
 
-// --- Component ---
+const getCellColor = (age: number, colorMode: string) => {
+    if (age === 0) return 'transparent';
+    
+    if (colorMode === 'classic') return '#61dafb';
+    
+    if (colorMode === 'heat') {
+        if (age === 1) return '#ffffff';
+        if (age < 5) return '#ffaa00';
+        if (age < 15) return '#ff5500';
+        return '#8800ff';
+    }
+
+    if (colorMode === 'neon') {
+        const hue = (180 + (age * 10)) % 360;
+        return `hsl(${hue}, 100%, 60%)`;
+    }
+    return '#fff';
+};
+
+const getCellShadow = (age: number, colorMode: string) => {
+    if (age === 0) return 'none';
+    if (colorMode === 'classic') return '0 0 2px #61dafb';
+    if (colorMode === 'neon') {
+       const hue = (180 + (age * 10)) % 360;
+       return `0 0 8px hsl(${hue}, 100%, 50%)`;
+    }
+    return 'none';
+};
+
+// --- Memoized Cell Component ---
+
+interface CellProps {
+    age: number;
+    row: number;
+    col: number;
+    colorMode: 'classic' | 'heat' | 'neon';
+    showGridLines: boolean;
+    onInteract: (r: number, c: number, type: 'down' | 'enter') => void;
+}
+
+const Cell = memo(({ age, row, col, colorMode, showGridLines, onInteract }: CellProps) => {
+    return (
+        <div
+            className="cell"
+            style={{
+                width: 20,
+                height: 20,
+                backgroundColor: getCellColor(age, colorMode),
+                boxShadow: getCellShadow(age, colorMode),
+                border: showGridLines ? '1px solid rgba(255,255,255,0.1)' : '1px solid transparent',
+                borderRadius: colorMode === 'neon' ? '20%' : '0'
+            }}
+            onMouseDown={() => onInteract(row, col, 'down')}
+            onMouseEnter={() => onInteract(row, col, 'enter')}
+        />
+    );
+}, (prev, next) => {
+    return (
+        prev.age === next.age &&
+        prev.colorMode === next.colorMode &&
+        prev.showGridLines === next.showGridLines
+    );
+});
+
+Cell.displayName = 'MemoizedCell';
+
+
+// --- Main Component ---
 
 const GameOfLife: React.FC = () => {
   // --- State ---
@@ -73,6 +140,7 @@ const GameOfLife: React.FC = () => {
   const [selectedRule, setSelectedRule] = useState<RuleSet>(RULE_SETS[0]);
   const [colorMode, setColorMode] = useState<'classic' | 'heat' | 'neon'>('neon');
   const [showGridLines, setShowGridLines] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Interaction State
   const [interactionMode, setInteractionMode] = useState<'draw' | 'erase' | 'stamp'>('draw');
@@ -97,6 +165,15 @@ const GameOfLife: React.FC = () => {
   
   const ruleRef = useRef(selectedRule);
   ruleRef.current = selectedRule;
+  
+  const interactionModeRef = useRef(interactionMode);
+  interactionModeRef.current = interactionMode;
+  
+  const selectedStampRef = useRef(selectedStamp);
+  selectedStampRef.current = selectedStamp;
+  
+  const gridRef = useRef(grid);
+  useEffect(() => { gridRef.current = grid; }, [grid]);
 
   // Sync audio settings
   useEffect(() => {
@@ -117,6 +194,19 @@ const GameOfLife: React.FC = () => {
     window.addEventListener('mouseup', handleWindowMouseUp);
     return () => window.removeEventListener('mouseup', handleWindowMouseUp);
   }, []);
+
+  // Update Life Energy CSS Variable
+  useEffect(() => {
+      let activeCount = 0;
+      for (let i = 0; i < grid.length; i++) {
+          for (let j = 0; j < grid[0].length; j++) {
+              if (grid[i][j] > 0) activeCount++;
+          }
+      }
+      const intensity = Math.min(activeCount / 500, 1); // Cap at 1
+      document.documentElement.style.setProperty('--life-intensity', intensity.toString());
+  }, [grid]);
+
 
   // --- Simulation Logic ---
 
@@ -222,33 +312,18 @@ const GameOfLife: React.FC = () => {
   };
 
   const handleScrub = (index: number) => {
-      // Index 0 = oldest in history
-      // Index length = current state
-      // We are scrubbing *into* the history.
-      // If we scrub, we are essentially "previewing" the past.
-      // If we "Resume" from there, we need to decide if we fork or restore.
-      // Simple Time Travel: Overwrite current grid with history[index] and truncate future.
-      
       if (!historyRef.current[index]) return;
-      
       const targetState = historyRef.current[index];
-      // When we scrub to 'index', we lose everything AFTER 'index'.
-      // This is destructive time travel.
-      
       const newHistory = historyRef.current.slice(0, index);
       historyRef.current = newHistory;
       setHistoryLength(newHistory.length);
-      
       setGrid(targetState.map(row => [...row]));
-      // Adjust generation count roughly (we don't track gen number in history array, so this is an estimate or we just subtract)
-      // For accuracy, we'd need to store [Grid, GenNumber] in history.
-      // For now, let's just subtract the difference.
       const diff = historyLength - index;
       setGeneration(g => Math.max(0, g - diff));
   };
 
   const handleRandomize = () => {
-    addToHistory(grid); // Save state before randomizing
+    addToHistory(grid);
     const newGrid = [];
     for (let i = 0; i < numRows; i++) {
       newGrid.push(Array.from(Array(numCols), () => (Math.random() > 0.75 ? 1 : 0)));
@@ -264,7 +339,6 @@ const GameOfLife: React.FC = () => {
     setRunning(false);
   };
 
-  // Loads pattern in the center and clears grid (Classic "Load Preset")
   const handlePatternLoad = (patternName: string) => {
     setRunning(false);
     addToHistory(grid);
@@ -287,7 +361,7 @@ const GameOfLife: React.FC = () => {
 
   const handleSizeChange = (r: number, c: number) => {
       setRunning(false);
-      historyRef.current = []; // Clear history on size change to avoid mismatch errors
+      historyRef.current = []; 
       setHistoryLength(0);
       setNumRows(r);
       setNumCols(c);
@@ -297,244 +371,201 @@ const GameOfLife: React.FC = () => {
 
   // --- Interaction Logic (Draw/Stamp) ---
 
-  const placeStamp = (startR: number, startC: number, patternKey: string) => {
-      const pattern = PATTERNS[patternKey];
-      if (!pattern) return;
+  // We need a separate effect/ref for isMouseDown to be accessible inside the callback without re-creating it 
+  // constantly if we want to avoid re-renders during drag?
+  // To optimize: Use `useRef` for `isMouseDown` to avoid rebuilding callback.
+  const isMouseDownRef = useRef(isMouseDown);
+  useEffect(() => { isMouseDownRef.current = isMouseDown; }, [isMouseDown]);
+
+  const handleCellInteract = useCallback((r: number, c: number, type: 'down' | 'enter') => {
+      if (type === 'enter' && !isMouseDownRef.current) return;
       
-      // Save for Undo
-      addToHistory(grid);
+      // Stamp logic needs grid access or simplified
+      if (interactionModeRef.current === 'stamp') {
+          if (type === 'down') {
+             // Let's simplify: Stamp only on click, fine to re-create callback.
+          }
+      }
+      
+      if (type === 'down') {
+          addToHistory(gridRef.current);
+      }
 
       setGrid(prev => {
+          const mode = interactionModeRef.current;
+          if (type === 'enter' && mode === 'stamp') return prev; 
+          
+          const val = mode === 'draw' ? 1 : 0;
+          if (prev[r][c] === val && mode !== 'stamp') return prev;
+
           const newGrid = prev.map(row => [...row]);
-          pattern.forEach(([r, c]) => {
-              const targetR = (startR + r + prev.length) % prev.length;
-              const targetC = (startC + c + prev[0].length) % prev[0].length;
-              newGrid[targetR][targetC] = 1; // Force alive
-          });
+          
+          if (mode === 'stamp' && type === 'down') {
+             const pattern = PATTERNS[selectedStampRef.current];
+             if (pattern) {
+                pattern.forEach(([pr, pc]) => {
+                    const targetR = (r + pr + prev.length) % prev.length;
+                    const targetC = (c + pc + prev[0].length) % prev[0].length;
+                    newGrid[targetR][targetC] = 1; 
+                });
+             }
+          } else {
+             newGrid[r][c] = val;
+          }
           return newGrid;
       });
-  };
 
-  const onCellInteraction = (r: number, c: number, type: 'down' | 'enter') => {
-      // 1. Mouse Down Event
-      if (type === 'down') {
-          setIsMouseDown(true);
-          
-          if (interactionMode === 'stamp') {
-              placeStamp(r, c, selectedStamp);
-              return;
-          }
-          
-          addToHistory(grid); // Save before drawing stroke
-
-          // Draw/Erase single click
-          setGrid(prev => {
-              const newGrid = prev.map(row => [...row]);
-              newGrid[r][c] = interactionMode === 'draw' ? 1 : 0;
-              return newGrid;
-          });
-      }
-      
-      // 2. Mouse Enter (Drag) Event
-      else if (type === 'enter' && isMouseDown) {
-          if (interactionMode === 'stamp') return; // Don't drag-stamp, too chaotic
-
-          setGrid(prev => {
-            // Optimization: Only update if changed
-            if (prev[r][c] === (interactionMode === 'draw' ? 1 : 0)) return prev;
-
-            const newGrid = prev.map(row => [...row]);
-            newGrid[r][c] = interactionMode === 'draw' ? 1 : 0;
-            return newGrid;
-        });
-      }
-  };
-
-
-  // --- Rendering Helpers ---
-
-  const getCellColor = (age: number) => {
-      if (age === 0) return 'transparent';
-      
-      if (colorMode === 'classic') return '#61dafb';
-      
-      if (colorMode === 'heat') {
-          if (age === 1) return '#ffffff';
-          if (age < 5) return '#ffaa00';
-          if (age < 15) return '#ff5500';
-          return '#8800ff';
-      }
-
-      if (colorMode === 'neon') {
-          const hue = (180 + (age * 10)) % 360;
-          return `hsl(${hue}, 100%, 60%)`;
-      }
-      return '#fff';
-  };
-
-  const getCellShadow = (age: number) => {
-      if (age === 0) return 'none';
-      if (colorMode === 'classic') return '0 0 2px #61dafb';
-      if (colorMode === 'neon') {
-         const hue = (180 + (age * 10)) % 360;
-         return `0 0 8px hsl(${hue}, 100%, 50%)`;
-      }
-      return 'none';
-  };
+  }, []); // Dependencies empty! Uses Refs.
 
   return (
-    <div className="game-container">
-      <h1 className="title">Game of Life <span>{selectedRule.name}</span></h1>
+    <div className="game-container immersive">
       
-      <div className="main-layout">
+      {/* Full Screen Grid */}
+      <div 
+        className="grid-surface"
+        style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${numCols}, 20px)`,
+            width: '100%',
+            height: '100%',
+            justifyContent: 'center',
+            alignContent: 'center',
+        }}
+        onMouseLeave={() => setIsMouseDown(false)}
+      >
+        {grid.map((rows, i) => 
+            rows.map((age, k) => (
+                <Cell
+                    key={`${i}-${k}`}
+                    row={i} 
+                    col={k}
+                    age={age}
+                    colorMode={colorMode}
+                    showGridLines={showGridLines}
+                    onInteract={handleCellInteract}
+                />
+            ))
+        )}
+      </div>
+
+      {/* Glass HUD Container */}
+      <div className="glass-hud-container">
         
-        {/* Left Sidebar: Controls */}
-        <div className="sidebar">
-            
-            {/* TOOLBOX */}
-            <div className="control-group">
-                <h3>Tools</h3>
-                <div className="button-row" style={{marginBottom: '0.5rem'}}>
-                    <button 
-                        className={interactionMode === 'draw' ? 'active toggle-btn' : 'toggle-btn'} 
-                        onClick={() => setInteractionMode('draw')}
-                        style={{border: '1px solid #444'}}
-                    >
-                        Draw ✏️
-                    </button>
-                    <button 
-                        className={interactionMode === 'erase' ? 'active toggle-btn' : 'toggle-btn'} 
-                        onClick={() => setInteractionMode('erase')}
-                        style={{border: '1px solid #444'}}
-                    >
-                        Erase 🧹
-                    </button>
-                    <button 
-                        className={interactionMode === 'stamp' ? 'active toggle-btn' : 'toggle-btn'} 
-                        onClick={() => setInteractionMode('stamp')}
-                        style={{border: '1px solid #444'}}
-                    >
-                        Stamp ♟️
-                    </button>
-                </div>
-                {interactionMode === 'stamp' && (
-                    <select 
-                        value={selectedStamp} 
-                        onChange={(e) => setSelectedStamp(e.target.value)}
-                    >
-                        {Object.keys(PATTERNS).map(name => (
-                            <option key={name} value={name}>{name}</option>
-                        ))}
-                    </select>
-                )}
-            </div>
+        {/* Timeline Slider */}
+        {!running && historyLength > 0 && (
+             <div className="hud-timeline">
+                <input 
+                     type="range"
+                     min="0"
+                     max={historyLength}
+                     value={historyLength}
+                     onChange={(e) => handleScrub(Number(e.target.value))}
+                     title="Scrub History"
+                 />
+             </div>
+        )}
 
-            <div className="control-group">
-                <h3>Simulation</h3>
-                <div className="button-row">
-                    <button 
-                        onClick={handleStartStop} 
-                        className={running ? 'btn-stop' : 'btn-start'}
-                    >
-                        {running ? 'PAUSE' : 'PLAY'}
-                    </button>
-                    <button 
-                        onClick={handleUndo} 
-                        disabled={running || historyLength === 0}
-                        style={{ opacity: (running || historyLength === 0) ? 0.5 : 1 }}
-                    >
-                        Undo ⏪
-                    </button>
-                </div>
-                
-                {/* Time Travel Slider */}
-                {!running && historyLength > 0 && (
-                     <div style={{marginTop: '10px'}}>
-                        <label style={{textAlign:'center', color: '#61dafb'}}>
-                             Time Travel
-                        </label>
-                        <input 
-                             type="range"
-                             min="0"
-                             max={historyLength}
-                             value={historyLength}
-                             onChange={(e) => handleScrub(Number(e.target.value))}
-                             style={{width: '100%', direction: 'ltr'}}
-                         />
-                         <div style={{fontSize: '0.8rem', color: '#666', textAlign: 'center'}}>
-                             Scrub to rewind
-                         </div>
-                     </div>
-                )}
-                
-                <div className="button-row" style={{marginTop: '10px'}}>
-                     <button onClick={handleNextStep}>Next Step ⏭️</button>
-                    <button onClick={handleRandomize}>Random</button>
-                    <button onClick={handleClear} className="btn-danger">Clear</button>
-                </div>
-            </div>
+        {/* Main Controls */}
+        <div className="glass-hud">
+          <div className="hud-group">
+            <button className="hud-btn primary" onClick={handleStartStop}>
+                {running ? 'PAUSE' : 'PLAY'}
+            </button>
+            <button className="hud-btn" onClick={handleNextStep} disabled={running}>STEP</button>
+            <button className="hud-btn" onClick={handleUndo} disabled={running || historyLength === 0}>UNDO</button>
+          </div>
 
-            <div className="control-group">
-                <h3>Audio</h3>
-                <label className="checkbox-label">
-                    <input 
-                        type="checkbox" 
-                        checked={audioEnabled} 
-                        onChange={e => setAudioEnabled(e.target.checked)} 
-                    />
-                    Enable Sound
-                </label>
-                <label>
-                    Volume
-                    <input 
-                        type="range" min="0" max="0.5" step="0.01"
-                        value={volume} onChange={e => setVolume(Number(e.target.value))} 
-                    />
-                </label>
-                <label>
-                    Waveform
-                    <select 
-                        value={waveform} 
-                        onChange={(e) => setWaveform(e.target.value as OscillatorType)}
-                        style={{marginBottom:0, marginTop: '5px'}}
-                    >
-                        <option value="sine">Sine</option>
-                        <option value="triangle">Triangle</option>
-                        <option value="square">Square</option>
-                        <option value="sawtooth">Saw</option>
-                    </select>
-                </label>
-            </div>
+          <div className="hud-divider"></div>
 
-            <div className="control-group">
-                <h3>Settings</h3>
-                <label>
-                    Speed ({speed}ms)
-                    <input 
+          <div className="hud-group">
+              <button 
+                className={`hud-btn ${interactionMode === 'draw' ? 'active' : ''}`}
+                onClick={() => setInteractionMode('draw')}
+              >
+                  DRAW
+              </button>
+              <button 
+                className={`hud-btn ${interactionMode === 'erase' ? 'active' : ''}`}
+                onClick={() => setInteractionMode('erase')}
+              >
+                  ERASE
+              </button>
+              <button 
+                className={`hud-btn ${interactionMode === 'stamp' ? 'active' : ''}`}
+                onClick={() => setInteractionMode('stamp')}
+              >
+                  STAMP
+              </button>
+              {interactionMode === 'stamp' && (
+                  <select 
+                    className="hud-select"
+                    value={selectedStamp}
+                    onChange={(e) => setSelectedStamp(e.target.value)}
+                  >
+                     {Object.keys(PATTERNS).map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+              )}
+          </div>
+
+          <div className="hud-divider"></div>
+
+          <div className="hud-group">
+               <span className="hud-stat">GEN: {generation}</span>
+               <button 
+                  className={`hud-btn icon ${showSettings ? 'active' : ''}`} 
+                  onClick={() => setShowSettings(!showSettings)}
+                >
+                   ⚙️
+               </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Settings Overlay */}
+      {showSettings && (
+          <div className="settings-panel glass-panel">
+              <div className="settings-header">
+                  <h3>Configuration</h3>
+                  <button className="close-btn" onClick={() => setShowSettings(false)}>×</button>
+              </div>
+              
+              <div className="setting-item">
+                  <label>Ruleset & Preset</label>
+                  <select 
+                    value={selectedRule.name}
+                    onChange={(e) => setSelectedRule(RULE_SETS.find(r => r.name === e.target.value) || RULE_SETS[0])}
+                    style={{marginBottom: '0.5rem'}}
+                  >
+                      {RULE_SETS.map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
+                  </select>
+                  <select onChange={(e) => handlePatternLoad(e.target.value)} defaultValue="">
+                    <option value="" disabled>Load Pattern...</option>
+                    {Object.keys(PATTERNS).map(name => (
+                        <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+              </div>
+
+              <div className="setting-item">
+                  <label>Speed ({speed}ms)</label>
+                  <input 
                         type="range" min="10" max="500" step="10"
                         value={speed} onChange={e => setSpeed(Number(e.target.value))} 
                     />
-                </label>
-                <label>
-                    Grid Size ({numRows}x{numCols})
-                    <input 
-                        type="range" min="20" max="80" 
-                        value={numRows} onChange={e => handleSizeChange(Number(e.target.value), Number(e.target.value))} 
-                    />
-                </label>
-                <label className="checkbox-label">
-                    <input 
-                        type="checkbox" 
-                        checked={showGridLines} 
-                        onChange={e => setShowGridLines(e.target.checked)} 
-                    />
-                    Show Grid Lines
-                </label>
-            </div>
+              </div>
 
-            <div className="control-group">
-                <h3>Visuals</h3>
-                <div className="toggle-group">
+              <div className="setting-item">
+                  <label>Grid Size</label>
+                  <div className="row-gap">
+                    <button onClick={() => handleSizeChange(20, 30)}>Small</button>
+                    <button onClick={() => handleSizeChange(40, 50)}>Medium</button>
+                    <button onClick={() => handleSizeChange(60, 80)}>Large</button>
+                  </div>
+              </div>
+
+              <div className="setting-item">
+                  <label>Visuals</label>
+                  <div className="toggle-group" style={{marginBottom: '1rem'}}>
                     {['classic', 'heat', 'neon'].map(mode => (
                         <button 
                             key={mode}
@@ -544,66 +575,51 @@ const GameOfLife: React.FC = () => {
                             {mode}
                         </button>
                     ))}
-                </div>
-            </div>
+                  </div>
+                  <label className="checkbox-row">
+                    <input 
+                        type="checkbox" 
+                        checked={showGridLines} 
+                        onChange={e => setShowGridLines(e.target.checked)} 
+                    /> Show Grid Lines
+                  </label>
+              </div>
 
-            {/* Presets/Rules (Moved to bottom) */}
-            <div className="control-group">
-                <h3>Rules & Load</h3>
-                <select 
-                    value={selectedRule.name}
-                    onChange={(e) => setSelectedRule(RULE_SETS.find(r => r.name === e.target.value) || RULE_SETS[0])}
-                >
-                    {RULE_SETS.map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
-                </select>
+              <div className="setting-item">
+                  <label>Audio</label>
+                  <label className="checkbox-row" style={{marginBottom: '0.5rem'}}>
+                    <input 
+                        type="checkbox" 
+                        checked={audioEnabled} 
+                        onChange={e => setAudioEnabled(e.target.checked)} 
+                    /> Enable Sonification
+                  </label>
+                  <div className="row-gap" style={{alignItems: 'center'}}>
+                      <span style={{fontSize:'0.75rem', color:'#888'}}>Vol</span>
+                      <input 
+                        type="range" min="0" max="0.5" step="0.01"
+                        value={volume} onChange={e => setVolume(Number(e.target.value))} 
+                        style={{flex:1}}
+                      />
+                  </div>
+                  <select 
+                        value={waveform} 
+                        onChange={(e) => setWaveform(e.target.value as OscillatorType)}
+                        style={{marginTop: '0.5rem'}}
+                    >
+                        <option value="sine">Sine</option>
+                        <option value="triangle">Triangle</option>
+                        <option value="square">Square</option>
+                        <option value="sawtooth">Saw</option>
+                    </select>
+              </div>
 
-                <select onChange={(e) => handlePatternLoad(e.target.value)} defaultValue="">
-                    <option value="" disabled>Load Preset (Clears Board)...</option>
-                    {Object.keys(PATTERNS).map(name => (
-                        <option key={name} value={name}>{name}</option>
-                    ))}
-                </select>
-            </div>
-            
-            <div className="stats">
-                <div>Gen: <span>{generation}</span></div>
-            </div>
-        </div>
-
-        {/* Right Side: Grid */}
-        <div className="grid-wrapper">
-            <div 
-                className="grid"
-                style={{
-                    display: 'grid',
-                    gridTemplateColumns: `repeat(${numCols}, 20px)`,
-                    // Prevent default drag behavior to allow our custom painting
-                    userSelect: 'none'
-                }}
-                onMouseLeave={() => setIsMouseDown(false)}
-            >
-                {grid.map((rows, i) => 
-                    rows.map((age, k) => (
-                        <div
-                            key={`${i}-${k}`}
-                            className="cell"
-                            style={{
-                                width: 20,
-                                height: 20,
-                                backgroundColor: getCellColor(age),
-                                boxShadow: getCellShadow(age),
-                                border: showGridLines ? '1px solid #333' : '1px solid transparent',
-                                borderRadius: colorMode === 'neon' ? '20%' : '0'
-                            }}
-                            onMouseDown={() => onCellInteraction(i, k, 'down')}
-                            onMouseEnter={() => onCellInteraction(i, k, 'enter')}
-                        />
-                    ))
-                )}
-            </div>
-        </div>
-
-      </div>
+              <div className="setting-item actions">
+                  <button onClick={handleRandomize}>Randomize</button>
+                  <button onClick={handleClear} className="danger">Clear Board</button>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
