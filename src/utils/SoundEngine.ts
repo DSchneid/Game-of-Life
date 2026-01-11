@@ -68,19 +68,21 @@ class SoundEngine {
 
     // Envelope
     noteGain.connect(this.gainNode);
-    // Attack
+    
+    // Cavernous Envelope: Sharp Attack, Long Release
     noteGain.gain.setValueAtTime(0, this.ctx.currentTime);
-    noteGain.gain.linearRampToValueAtTime(this.volume, this.ctx.currentTime + 0.05);
-    // Decay/Release
-    noteGain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+    // Sharp Attack (Percussive pop)
+    noteGain.gain.linearRampToValueAtTime(this.volume, this.ctx.currentTime + 0.01);
+    // Long Exponential Release (Reverb/Echo tail)
+    noteGain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration + 0.5);
 
     osc.connect(noteGain);
     osc.start();
-    osc.stop(this.ctx.currentTime + duration + 0.1);
+    osc.stop(this.ctx.currentTime + duration + 0.6);
 
     // Optional: Add a subtle harmony if lots of births
     if (bornCount > 5) {
-        this.playHarmony(safeIndex - 2, duration);
+        this.playHarmony(safeIndex - 2, duration + 0.2);
     }
   }
 

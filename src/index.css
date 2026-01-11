@@ -273,7 +273,13 @@ body {
 }
 
 .cell {
-  transition: background-color 0.1s ease, box-shadow 0.2s ease, border 0.5s ease;
+  /* Death: Faster fade out for "Phosphor" trail effect */
+  transition: background-color 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.cell.alive {
+  /* Birth: Instant appearance, no lag */
+  transition: none;
 }
 
 

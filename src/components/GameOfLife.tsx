@@ -63,13 +63,15 @@ const getCellColor = (age: number, colorMode: string) => {
     
     if (colorMode === 'classic') return '#61dafb';
     
+    // Phosphor / Heat Mode (White Hot -> Cool Red)
     if (colorMode === 'heat') {
-        if (age === 1) return '#ffffff';
-        if (age < 5) return '#ffaa00';
-        if (age < 15) return '#ff5500';
-        return '#8800ff';
+        if (age === 1) return '#ffffff'; // White hot birth
+        if (age === 2) return '#fff700'; // Yellow
+        if (age < 5)   return '#ff8800'; // Orange
+        return '#ff0044'; // Red ember
     }
 
+    // Neon Mode (Classic HSL Hue cycling based on age)
     if (colorMode === 'neon') {
         const hue = (180 + (age * 10)) % 360;
         return `hsl(${hue}, 100%, 60%)`;
@@ -79,10 +81,20 @@ const getCellColor = (age: number, colorMode: string) => {
 
 const getCellShadow = (age: number, colorMode: string) => {
     if (age === 0) return 'none';
+    
     if (colorMode === 'classic') return '0 0 2px #61dafb';
+    
+    const color = getCellColor(age, colorMode);
+    
+    // Dynamic glow intensity based on age (Newborn = brighter)
+    const intensity = age === 1 ? '15px' : '6px';
+    
     if (colorMode === 'neon') {
        const hue = (180 + (age * 10)) % 360;
-       return `0 0 8px hsl(${hue}, 100%, 50%)`;
+       return `0 0 ${intensity} hsl(${hue}, 100%, 50%)`;
+    }
+    if (colorMode === 'heat') {
+       return `0 0 ${intensity} ${color}`;
     }
     return 'none';
 };
@@ -101,14 +113,14 @@ interface CellProps {
 const Cell = memo(({ age, row, col, colorMode, showGridLines, onInteract }: CellProps) => {
     return (
         <div
-            className="cell"
+            className={`cell ${age > 0 ? 'alive' : ''}`}
             style={{
                 width: 20,
                 height: 20,
                 backgroundColor: getCellColor(age, colorMode),
                 boxShadow: getCellShadow(age, colorMode),
-                border: showGridLines ? '1px solid rgba(255,255,255,0.1)' : '1px solid transparent',
-                borderRadius: colorMode === 'neon' ? '20%' : '0'
+                border: showGridLines ? '1px solid rgba(255,255,255,0.05)' : '1px solid transparent',
+                borderRadius: colorMode === 'neon' ? '2px' : '0'
             }}
             onMouseDown={() => onInteract(row, col, 'down')}
             onMouseEnter={() => onInteract(row, col, 'enter')}
@@ -139,7 +151,7 @@ const GameOfLife: React.FC = () => {
   
   const [selectedRule, setSelectedRule] = useState<RuleSet>(RULE_SETS[0]);
   const [colorMode, setColorMode] = useState<'classic' | 'heat' | 'neon'>('neon');
-  const [showGridLines, setShowGridLines] = useState(true);
+  const [showGridLines, setShowGridLines] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   // Interaction State
