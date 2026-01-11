@@ -159,6 +159,9 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       return generateEmptyGrid(dim.rows, dim.cols);
   });
   
+  // UI Visibility State
+  const [isUiVisible, setIsUiVisible] = useState(true);
+  
   const [running, setRunning] = useState(false);
   const [generation, setGeneration] = useState(0);
   const [speed, setSpeed] = useState(100);
@@ -505,8 +508,19 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
         )}
       </div>
 
-      {/* Glass HUD Container */}
+      {/* Toggle UI Button - Always visible if enabled from parent */}
       {enableUI && (
+        <button 
+            className={`ui-toggle-btn ${!isUiVisible ? 'hidden-ui' : ''}`}
+            onClick={() => setIsUiVisible(!isUiVisible)}
+            title={isUiVisible ? "Hide Interface" : "Show Interface"}
+        >
+            <div className="icon-frame"></div>
+        </button>
+      )}
+
+      {/* Glass HUD Container */}
+      {enableUI && isUiVisible && (
       <div className="glass-hud-container">
         
         {/* Timeline Slider */}
@@ -608,7 +622,7 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       )}
 
       {/* Settings Overlay */}
-      {enableUI && showSettings && (
+      {enableUI && isUiVisible && showSettings && (
           <div className="settings-panel glass-panel">
               <div className="settings-header">
                   <h3>Configuration</h3>

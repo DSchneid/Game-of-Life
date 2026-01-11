@@ -2,6 +2,7 @@ import { useState } from 'react';
 import GameOfLife from './components/GameOfLife';
 import './index.css';
 import './intro.css';
+import './ui-toggle.css';
 
 function App() {
   const [isIntro, setIsIntro] = useState(true);

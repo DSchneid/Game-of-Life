@@ -1,0 +1,73 @@
+/* --- UI Toggle Button --- */
+.ui-toggle-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 500;
+    
+    background: var(--glass-bg, rgba(20, 20, 20, 0.65));
+    backdrop-filter: var(--glass-blur, blur(16px));
+    -webkit-backdrop-filter: var(--glass-blur, blur(16px));
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.08));
+    
+    color: var(--primary, #61dafb);
+    font-size: 0.8rem;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 1px;
+    
+    padding: 0;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+.ui-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--primary, #61dafb);
+    box-shadow: 0 0 15px var(--primary-glow);
+    transform: translateY(-1px);
+}
+
+/* Icon (Simulated with text/border) */
+.icon-frame {
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-radius: 4px;
+    position: relative;
+}
+
+.icon-frame::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 4px;
+    background: currentColor;
+    border-radius: 50%;
+    opacity: 1;
+    transition: opacity 0.2s;
+}
+
+.ui-toggle-btn.hidden-ui .icon-frame::after {
+    opacity: 0;
+}
+
+.ui-toggle-btn.hidden-ui {
+    opacity: 0.5;
+    color: var(--text-muted);
+}
+.ui-toggle-btn.hidden-ui:hover {
+    opacity: 1;
+    color: #fff;
+}
