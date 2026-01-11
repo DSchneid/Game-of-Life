@@ -1,15 +1,17 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { PerspectiveCamera } from '@react-three/drei';
+import { VRButton, XR, Controllers, Hands, Interactive, useXR } from '@react-three/xr';
 import * as THREE from 'three';
 
 // --- Types ---
-type Grid3DType = Uint8Array; // Flattened 3D array: x + y*WIDTH + z*WIDTH*HEIGHT
+type Grid3DType = Uint8Array; 
 
-const WIDTH = 20;
-const HEIGHT = 20;
-const DEPTH = 20;
+const WIDTH = 32;
+const HEIGHT = 32;
+const DEPTH = 32;
 const TOTAL_CELLS = WIDTH * HEIGHT * DEPTH;
+const SPACING = 0.5;
 
 interface RuleSet3D {
   name: string;
@@ -17,13 +19,11 @@ interface RuleSet3D {
   survive: number[];
 }
 
-// 3D Life Rules
-// Notation: Bx/Sy where x=neighbors to be born, y=neighbors to survive
+// Switching to 2D-friendly rules for the surface simulation
 const RULE_SETS_3D: RuleSet3D[] = [
-    { name: '4555 (Standard 3D)', born: [4], survive: [5] },
-    { name: '5766 (HighLife 3D)', born: [5, 6, 7], survive: [6] },
-    { name: 'Clouds 13/13/13', born: [13,14,15,16,17,18,19], survive: [13] }, // Dense
-    { name: 'Construction (B4/S4)', born: [4], survive: [4] },
+    { name: 'Conway Classic (2D Surface)', born: [3], survive: [2, 3] },
+    { name: 'HighLife (2D Surface)', born: [3, 6], survive: [2, 3] },
+    { name: 'Day & Night (2D Surface)', born: [3, 6, 7, 8], survive: [3, 4, 6, 7, 8] },
 ];
 
 const getIndex = (x: number, y: number, z: number) => x + y * WIDTH + z * WIDTH * HEIGHT;
@@ -36,16 +36,92 @@ const getCoords = (index: number) => {
     return { x, y, z };
 };
 
-// --- Logic Helper ---
+// Helper to check if a coordinate is on the "Shell" (Faces of the cube)
+const isShell = (x: number, y: number, z: number) => {
+    return x === 0 || x === WIDTH - 1 || y === 0 || y === HEIGHT - 1 || z === 0 || z === DEPTH - 1;
+};
+
+// --- Logic Helpers ---
 
 const generateEmptyGrid = (): Grid3DType => new Uint8Array(TOTAL_CELLS);
 
 const generateRandomGrid = (): Grid3DType => {
     const grid = new Uint8Array(TOTAL_CELLS);
-    for (let i = 0; i < TOTAL_CELLS; i++) {
-        grid[i] = Math.random() > 0.85 ? 1 : 0; // Sparse random
+    for (let x = 0; x < WIDTH; x++) {
+        for (let y = 0; y < HEIGHT; y++) {
+            for (let z = 0; z < DEPTH; z++) {
+                if (isShell(x, y, z)) {
+                    const idx = getIndex(x, y, z);
+                    grid[idx] = Math.random() > 0.75 ? 1 : 0;
+                }
+            }
+        }
     }
     return grid;
+};
+
+// --- VR Interaction Components ---
+
+const VRInteractionLayer = ({ onToggleCell, onTogglePause }: { 
+    onToggleCell: (x: number, y: number, z: number) => void,
+    onTogglePause: () => void 
+}) => {
+    const { controllers } = useXR();
+    const lastAButtonPressed = useRef(false);
+
+    // Handle "A" Button for Pause/Play
+    useFrame(() => {
+        const rightController = controllers.find(c => c.inputSource.handedness === 'right');
+        if (rightController?.inputSource.gamepad) {
+            const gamepad = rightController.inputSource.gamepad;
+            const aButtonPressed = gamepad.buttons[4]?.pressed || gamepad.buttons[5]?.pressed; 
+            
+            if (aButtonPressed && !lastAButtonPressed.current) {
+                onTogglePause();
+                if (gamepad.hapticActuators?.[0]) {
+                    gamepad.hapticActuators[0].pulse(0.4, 100);
+                }
+            }
+            lastAButtonPressed.current = !!aButtonPressed;
+        }
+    });
+
+    const handleSelect = (e: any) => {
+        const intersection = e.intersection;
+        if (!intersection) return;
+
+        const p = intersection.point;
+        
+        let gx = Math.floor(p.x / SPACING + WIDTH / 2);
+        let gy = Math.floor(p.y / SPACING + HEIGHT / 2);
+        let gz = Math.floor(p.z / SPACING + DEPTH / 2);
+
+        gx = Math.max(0, Math.min(WIDTH - 1, gx));
+        gy = Math.max(0, Math.min(HEIGHT - 1, gy));
+        gz = Math.max(0, Math.min(DEPTH - 1, gz));
+
+        onToggleCell(gx, gy, gz);
+        
+        const gamepad = e.controller?.inputSource?.gamepad;
+        if (gamepad?.hapticActuators?.[0]) {
+            gamepad.hapticActuators[0].pulse(0.8, 50);
+        }
+    };
+
+    const wallSize = WIDTH * SPACING;
+    const halfSize = wallSize / 2;
+
+    // Invisible planes for raycasting
+    return (
+        <group>
+            <Interactive onSelect={handleSelect}><mesh position={[0, 0, halfSize]} rotation={[0, Math.PI, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh></Interactive>
+            <Interactive onSelect={handleSelect}><mesh position={[0, 0, -halfSize]} rotation={[0, 0, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh></Interactive>
+            <Interactive onSelect={handleSelect}><mesh position={[-halfSize, 0, 0]} rotation={[0, Math.PI / 2, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh></Interactive>
+            <Interactive onSelect={handleSelect}><mesh position={[halfSize, 0, 0]} rotation={[0, -Math.PI / 2, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh></Interactive>
+            <Interactive onSelect={handleSelect}><mesh position={[0, halfSize, 0]} rotation={[Math.PI / 2, 0, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh></Interactive>
+            <Interactive onSelect={handleSelect}><mesh position={[0, -halfSize, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh></Interactive>
+        </group>
+    );
 };
 
 // --- Components ---
@@ -53,39 +129,41 @@ const generateRandomGrid = (): Grid3DType => {
 const CellInstancedMesh = ({ grid, colorMode }: { grid: Grid3DType, colorMode: 'neon' | 'heat' }) => {
     const meshRef = useRef<THREE.InstancedMesh>(null);
     const dummy = useMemo(() => new THREE.Object3D(), []);
-    
-    // Color Helpers
     const colorHelper = useMemo(() => new THREE.Color(), []);
 
-    // Update instances
     useEffect(() => {
         if (!meshRef.current) return;
         
         for (let i = 0; i < TOTAL_CELLS; i++) {
             const age = grid[i];
-            const { x, y, z } = getCoords(i);
-            
-            // Position centered
-            dummy.position.set(
-                x - WIDTH / 2,
-                y - HEIGHT / 2,
-                z - DEPTH / 2
-            );
-
-            // Scale based on state (0 = hidden/tiny)
-            // To prevent massive overdraw, we scale 0 cells to 0
             if (age > 0) {
-                dummy.scale.set(0.8, 0.8, 0.8);
+                const { x, y, z } = getCoords(i);
+                
+                dummy.position.set(
+                    (x - WIDTH / 2) * SPACING,
+                    (y - HEIGHT / 2) * SPACING,
+                    (z - DEPTH / 2) * SPACING
+                );
+
+                // Flatten the cells based on which wall they are on to look like 2D panels
+                // Default scale
+                let sx = 0.9, sy = 0.9, sz = 0.9;
+                
+                // If on X-face (Left/Right), flatten X
+                if (x === 0 || x === WIDTH - 1) sx = 0.05;
+                // If on Y-face (Top/Bottom), flatten Y
+                if (y === 0 || y === HEIGHT - 1) sy = 0.05;
+                // If on Z-face (Front/Back), flatten Z
+                if (z === 0 || z === DEPTH - 1) sz = 0.05;
+
+                dummy.scale.set(sx * SPACING, sy * SPACING, sz * SPACING);
                 dummy.updateMatrix();
                 meshRef.current.setMatrixAt(i, dummy.matrix);
                 
-                // Color Logic
                 if (colorMode === 'neon') {
-                     // HSL based on position or age? Let's do position for cool gradients
-                     const hue = (x * 10 + y * 10 + z * 10) % 360;
+                     const hue = (x * 5 + y * 5 + z * 5) % 360;
                      colorHelper.setHSL(hue / 360, 1, 0.5);
                 } else {
-                     // Heat: White -> Red
                      const intensity = Math.min(age * 0.1, 1);
                      colorHelper.setHSL(0.1 - (intensity * 0.1), 1, 0.5 + (intensity * 0.4));
                 }
@@ -108,10 +186,9 @@ const CellInstancedMesh = ({ grid, colorMode }: { grid: Grid3DType, colorMode: '
             <meshStandardMaterial 
                 transparent 
                 opacity={0.9} 
-                roughness={0.1} 
-                metalness={0.1}
-                emissive={new THREE.Color(0x222222)}
-                emissiveIntensity={0.2}
+                roughness={0.2} 
+                metalness={0.8}
+                emissive={new THREE.Color(0x000000)}
             />
         </instancedMesh>
     );
@@ -126,7 +203,7 @@ interface GameOfLife3DProps {
 const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
     const [grid, setGrid] = useState<Grid3DType>(generateRandomGrid);
     const [running, setRunning] = useState(false);
-    const [speed, setSpeed] = useState(200);
+    const [speed, setSpeed] = useState(100);
     const [selectedRule, setSelectedRule] = useState(RULE_SETS_3D[0]);
     
     const runningRef = useRef(running);
@@ -138,34 +215,36 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
     const ruleRef = useRef(selectedRule);
     ruleRef.current = selectedRule;
 
-    // Simulation Step
+    // Simulation Step (Shell Only)
     const runStep = useCallback(() => {
         setGrid((prevGrid) => {
             const nextGrid = new Uint8Array(TOTAL_CELLS);
             const { born, survive } = ruleRef.current;
 
-            // Neighbor Offsets (26)
-            // Pre-calculate this ideally, but loops are fast enough for 8000 cells
             for (let x = 0; x < WIDTH; x++) {
                 for (let y = 0; y < HEIGHT; y++) {
                     for (let z = 0; z < DEPTH; z++) {
+                        // Skip if inside the cube (not on shell)
+                        if (!isShell(x, y, z)) continue;
+
                         const idx = getIndex(x, y, z);
                         const selfAlive = prevGrid[idx] > 0;
                         
                         let neighbors = 0;
                         
-                        // Check 3x3x3 block around cell
+                        // Check 26 neighbors in 3D space
                         for (let dx = -1; dx <= 1; dx++) {
                             for (let dy = -1; dy <= 1; dy++) {
                                 for (let dz = -1; dz <= 1; dz++) {
                                     if (dx === 0 && dy === 0 && dz === 0) continue;
                                     
-                                    // Wrap coordinates
                                     const nx = (x + dx + WIDTH) % WIDTH;
                                     const ny = (y + dy + HEIGHT) % HEIGHT;
                                     const nz = (z + dz + DEPTH) % DEPTH;
                                     
-                                    if (prevGrid[getIndex(nx, ny, nz)] > 0) {
+                                    // CRITICAL: Only count neighbors that are ALSO on the shell
+                                    // This prevents growth into the void
+                                    if (isShell(nx, ny, nz) && prevGrid[getIndex(nx, ny, nz)] > 0) {
                                         neighbors++;
                                     }
                                 }
@@ -174,13 +253,13 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
 
                         if (selfAlive) {
                             if (survive.includes(neighbors)) {
-                                nextGrid[idx] = Math.min(prevGrid[idx] + 1, 255); // Age
+                                nextGrid[idx] = Math.min(prevGrid[idx] + 1, 255);
                             } else {
                                 nextGrid[idx] = 0;
                             }
                         } else {
                             if (born.includes(neighbors)) {
-                                nextGrid[idx] = 1; // Born
+                                nextGrid[idx] = 1;
                             }
                         }
                     }
@@ -197,9 +276,7 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
     }, [runStep]);
 
     useEffect(() => {
-        if (running) {
-            runSimulation();
-        }
+        if (running) runSimulation();
     }, [running, runSimulation]);
 
     // Handlers
@@ -213,21 +290,33 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
         setGrid(generateEmptyGrid());
     };
 
+    const handleToggleCell = useCallback((x: number, y: number, z: number) => {
+        if (!isShell(x,y,z)) return; // Prevent painting in void
+        setGrid(prev => {
+            const next = new Uint8Array(prev);
+            const idx = getIndex(x, y, z);
+            next[idx] = next[idx] > 0 ? 0 : 1;
+            return next;
+        });
+    }, []);
+
     return (
         <div className="game-container immersive 3d-mode" style={{ position: 'relative', width: '100%', height: '100%' }}>
+            <VRButton />
             <Canvas shadows dpr={[1, 2]}>
-                <PerspectiveCamera makeDefault position={[30, 30, 30]} fov={50} />
-                <OrbitControls autoRotate={running} autoRotateSpeed={0.5} />
-                
-                <ambientLight intensity={0.5} />
-                <pointLight position={[20, 20, 20]} intensity={1} />
-                <pointLight position={[-20, -20, -20]} color="blue" intensity={1} />
-                
-                {/* Visualizer Helper */}
-                <gridHelper args={[WIDTH, WIDTH]} position={[0, -HEIGHT/2 - 0.5, 0]} />
-                <gridHelper args={[WIDTH, WIDTH]} position={[0, HEIGHT/2 + 0.5, 0]} />
+                <XR>
+                    <PerspectiveCamera makeDefault position={[0, 0, 0]} fov={70} />
+                    <ambientLight intensity={0.2} />
+                    <pointLight position={[10, 10, 10]} intensity={1} />
+                    
+                    <Controllers />
+                    <Hands />
 
-                <CellInstancedMesh grid={grid} colorMode="neon" />
+                    <group position={[0, 0, 0]}>
+                        <CellInstancedMesh grid={grid} colorMode="neon" />
+                        <VRInteractionLayer onToggleCell={handleToggleCell} onTogglePause={handleStartStop} />
+                    </group>
+                </XR>
             </Canvas>
 
             {/* HUD */}
@@ -235,6 +324,7 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
                 <div className="glass-hud-container" style={{ pointerEvents: 'none' }}>
                     <div className="glass-hud" style={{ pointerEvents: 'all' }}>
                         <div className="hud-group">
+                            <div className="hud-divider"></div>
                             <button className="hud-btn primary" onClick={handleStartStop}>
                                 {running ? 'PAUSE' : 'PLAY'}
                             </button>

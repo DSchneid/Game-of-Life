@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import GameOfLife from './components/GameOfLife';
-import GameOfLife3D from './components/GameOfLife3D';
 import './index.css';
 import './intro.css';
 import './ui-toggle.css';
+
+// Lazy load the 3D engine to prevent import-time crashes from breaking the app
+const GameOfLife3D = lazy(() => import('./components/GameOfLife3D'));
 
 function App() {
   const [isIntro, setIsIntro] = useState(true);
@@ -78,7 +80,9 @@ function App() {
            {mode === '2d' ? (
                <GameOfLife enableUI={!isIntro} />
            ) : (
-               <GameOfLife3D enableUI={!isIntro} />
+               <Suspense fallback={<div style={{color:'white', padding:'2rem'}}>Loading Quantum Matrix...</div>}>
+                   <GameOfLife3D enableUI={!isIntro} />
+               </Suspense>
            )}
         </div>
       </section>
