@@ -448,7 +448,7 @@ const GameOfLife: React.FC = () => {
         )}
       </div>
 
-      {/* Glass HUD Container */}
+      {/* Glass HUD */} 
       <div className="glass-hud-container">
         
         {/* Timeline Slider */}
@@ -474,6 +474,7 @@ const GameOfLife: React.FC = () => {
             <button className="hud-btn" onClick={handleNextStep} disabled={running}>STEP</button>
             <button className="hud-btn" onClick={handleUndo} disabled={running || historyLength === 0}>UNDO</button>
             <button className="hud-btn" onClick={handleRandomize}>RANDOM</button>
+            <button className="hud-btn" onClick={handleClear} style={{color: '#ff6b6b'}}>CLEAR</button>
           </div>
 
           <div className="hud-divider"></div>
@@ -523,6 +524,14 @@ const GameOfLife: React.FC = () => {
                     <option value="square">Square</option>
                     <option value="sawtooth">Saw</option>
                 </select>
+               <input 
+                    type="range" 
+                    min="0" max="0.5" step="0.01"
+                    value={volume} 
+                    onChange={e => setVolume(Number(e.target.value))} 
+                    style={{width: '60px', marginRight: '1rem', height: '4px'}}
+                    title={`Volume: ${Math.round(volume * 200)}%`}
+               />
                <span className="hud-stat">GEN: {generation}</span>
                <button 
                   className={`hud-btn icon ${showSettings ? 'active' : ''}`} 
@@ -607,18 +616,6 @@ const GameOfLife: React.FC = () => {
                         onChange={e => setAudioEnabled(e.target.checked)} 
                     /> Enable Sonification
                   </label>
-                  <div className="row-gap" style={{alignItems: 'center'}}>
-                      <span style={{fontSize:'0.75rem', color:'#888'}}>Vol</span>
-                      <input 
-                        type="range" min="0" max="0.5" step="0.01"
-                        value={volume} onChange={e => setVolume(Number(e.target.value))} 
-                        style={{flex:1}}
-                      />
-                  </div>
-              </div>
-
-              <div className="setting-item actions">
-                  <button onClick={handleClear} className="danger">Clear Board</button>
               </div>
           </div>
       )}
