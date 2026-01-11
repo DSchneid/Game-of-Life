@@ -150,6 +150,7 @@ const GameOfLife: React.FC = () => {
   // Time Travel State
   const historyRef = useRef<GridType[]>([]);
   const [historyLength, setHistoryLength] = useState(0);
+  const [playbackIndex, setPlaybackIndex] = useState<number | null>(null);
 
   // Audio State
   const [audioEnabled, setAudioEnabled] = useState(true);
@@ -159,6 +160,9 @@ const GameOfLife: React.FC = () => {
   // --- Refs ---
   const runningRef = useRef(running);
   runningRef.current = running;
+  
+  const playbackIndexRef = useRef(playbackIndex);
+  playbackIndexRef.current = playbackIndex;
 
   const speedRef = useRef(speed);
   speedRef.current = speed;
@@ -211,6 +215,12 @@ const GameOfLife: React.FC = () => {
   // --- Simulation Logic ---
 
   const addToHistory = (gridState: GridType) => {
+      // If we are time traveling (playbackIndex is set), we slice history first (forking)
+      if (playbackIndexRef.current !== null) {
+          historyRef.current = historyRef.current.slice(0, playbackIndexRef.current);
+          setPlaybackIndex(null); // Return to live head
+      }
+
       // Deep copy to store
       const stateCopy = gridState.map(row => [...row]);
       historyRef.current.push(stateCopy);
@@ -286,6 +296,12 @@ const GameOfLife: React.FC = () => {
   // --- Handlers ---
 
   const handleStartStop = () => {
+    // If we start running while in history, we resume from that point (fork)
+    if (!running && playbackIndex !== null) {
+        // We don't need to do anything special here because runStep calls addToHistory
+        // which checks playbackIndex and slices accordingly.
+    }
+    
     setRunning(!running);
     if (!running) {
       runningRef.current = true;
@@ -308,18 +324,25 @@ const GameOfLife: React.FC = () => {
           setGrid(previousState);
           setGeneration(g => Math.max(0, g - 1));
           setHistoryLength(historyRef.current.length);
+          setPlaybackIndex(null); // Reset preview on undo
       }
   };
 
   const handleScrub = (index: number) => {
+      // Non-destructive preview
       if (!historyRef.current[index]) return;
+      
       const targetState = historyRef.current[index];
-      const newHistory = historyRef.current.slice(0, index);
-      historyRef.current = newHistory;
-      setHistoryLength(newHistory.length);
+      
+      // Update the preview index
+      setPlaybackIndex(index);
+      
+      // Show the state
       setGrid(targetState.map(row => [...row]));
-      const diff = historyLength - index;
-      setGeneration(g => Math.max(0, g - diff));
+      
+      // Update generation display (visual only)
+      // Note: This is an estimation because we don't store gen number in history
+      setGeneration(g => Math.max(0, g)); 
   };
 
   const handleRandomize = () => {
@@ -363,6 +386,7 @@ const GameOfLife: React.FC = () => {
       setRunning(false);
       historyRef.current = []; 
       setHistoryLength(0);
+      setPlaybackIndex(null);
       setNumRows(r);
       setNumCols(c);
       setGrid(generateEmptyGrid(r, c));
@@ -448,7 +472,7 @@ const GameOfLife: React.FC = () => {
         )}
       </div>
 
-      {/* Glass HUD */} 
+      {/* Glass HUD Container */}
       <div className="glass-hud-container">
         
         {/* Timeline Slider */}
@@ -459,11 +483,11 @@ const GameOfLife: React.FC = () => {
                      type="range"
                      min="0"
                      max={historyLength}
-                     value={historyLength}
+                     value={playbackIndex !== null ? playbackIndex : historyLength}
                      onChange={(e) => handleScrub(Number(e.target.value))}
                      title={`Rewind history (${historyLength} frames available)`}
                      style={{
-                         backgroundSize: `${(historyLength / 100) * 100}% 100%` 
+                         backgroundSize: `${((playbackIndex !== null ? playbackIndex : historyLength) / historyLength) * 100}% 100%` 
                      }}
                  />
                  <span className="timeline-label">NOW</span>
