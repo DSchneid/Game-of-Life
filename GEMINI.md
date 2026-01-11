@@ -56,12 +56,12 @@ The repository is organized to separate the stable core from experimental featur
 ### Function Locations
 
 *   **Core Simulation Logic**:
-    *   **2D**: Located in `src/components/GameOfLife.tsx` (function `runStep`). Uses standard 2D array iteration.
+    *   **2D**: Located in `src/components/GameOfLife.tsx`. The simulation is managed by a `requestAnimationFrame` loop (`animate` function) that calls the `runStep` function based on a settable speed. This avoids React's render cycle for the core logic, using `useRef` hooks to manage state.
     *   **3D**: Located in `src/components/GameOfLife3D.tsx` (function `runStep`). Uses flattened `Uint8Array` and 26-neighbor checking.
 *   **Audio System**:
     *   `src/utils/SoundEngine.ts`: A singleton class `SoundEngine`. Accessed via `soundEngine.playGenerationSound()`.
 *   **Rendering Loop**:
-    *   **2D**: React DOM rendering mapped from state.
+    *   **2D**: A custom `draw` function renders the grid state to an HTML5 Canvas. It is called within the `requestAnimationFrame` loop after each simulation step, completely bypassing the React component render for high performance.
     *   **3D**: `useEffect` inside `CellInstancedMesh` updates the `InstancedMesh` matrices directly (bypassing React render cycle for performance).
 
 # Building and Running
