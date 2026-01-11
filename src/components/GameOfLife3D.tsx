@@ -62,19 +62,20 @@ const generateRandomGrid = (): Grid3DType => {
 
 // --- VR Interaction Components ---
 
-const VRInteractionLayer = ({ onToggleCell, onTogglePause }: { 
+const VRInteractionLayer = ({ onToggleCell, onTogglePause }: {
     onToggleCell: (x: number, y: number, z: number) => void,
-    onTogglePause: () => void 
+    onTogglePause: () => void
 }) => {
     const { controllers } = useXR();
     const lastAButtonPressed = useRef(false);
+    const [cursorPos, setCursorPos] = useState<[number, number, number] | null>(null);
 
     // Handle "A" Button for Pause/Play
     useFrame(() => {
         const rightController = controllers.find(c => c.inputSource.handedness === 'right');
         if (rightController?.inputSource.gamepad) {
             const gamepad = rightController.inputSource.gamepad;
-            const aButtonPressed = gamepad.buttons[4]?.pressed || gamepad.buttons[5]?.pressed; 
+            const aButtonPressed = gamepad.buttons[4]?.pressed || gamepad.buttons[5]?.pressed;
             
             if (aButtonPressed && !lastAButtonPressed.current) {
                 onTogglePause();
@@ -87,18 +88,19 @@ const VRInteractionLayer = ({ onToggleCell, onTogglePause }: {
     });
 
     const handleSelect = (e: any) => {
-        const intersection = e.intersection;
-        if (!intersection) return;
-
-        const p = intersection.point;
+        if (!cursorPos) return;
         
-        let gx = Math.floor(p.x / SPACING + WIDTH / 2);
-        let gy = Math.floor(p.y / SPACING + HEIGHT / 2);
-        let gz = Math.floor(p.z / SPACING + DEPTH / 2);
-
-        gx = Math.max(0, Math.min(WIDTH - 1, gx));
-        gy = Math.max(0, Math.min(HEIGHT - 1, gy));
-        gz = Math.max(0, Math.min(DEPTH - 1, gz));
+        // Use the calculated cursor position directly
+        // We know cursorPos is snapped to grid world coordinates
+        // We need the grid indices
+        
+        // Reverse the math: world = (index - offset) * SPACING
+        // index = world / SPACING + offset
+        const offset = (WIDTH - 1) / 2;
+        
+        const gx = Math.round(cursorPos[0] / SPACING + offset);
+        const gy = Math.round(cursorPos[1] / SPACING + offset);
+        const gz = Math.round(cursorPos[2] / SPACING + offset);
 
         onToggleCell(gx, gy, gz);
         
@@ -108,18 +110,71 @@ const VRInteractionLayer = ({ onToggleCell, onTogglePause }: {
         }
     };
 
+    const handleHover = (e: any) => {
+        const intersection = e.intersection;
+        if (!intersection) {
+            setCursorPos(null);
+            return;
+        }
+
+        const p = intersection.point;
+        const offset = (WIDTH - 1) / 2;
+
+        // Calculate grid index
+        let gx = Math.round(p.x / SPACING + offset);
+        let gy = Math.round(p.y / SPACING + offset);
+        let gz = Math.round(p.z / SPACING + offset);
+
+        // Clamp
+        gx = Math.max(0, Math.min(WIDTH - 1, gx));
+        gy = Math.max(0, Math.min(HEIGHT - 1, gy));
+        gz = Math.max(0, Math.min(DEPTH - 1, gz));
+
+        // Snap back to world position for the cursor visual
+        const wx = (gx - offset) * SPACING;
+        const wy = (gy - offset) * SPACING;
+        const wz = (gz - offset) * SPACING;
+
+        setCursorPos([wx, wy, wz]);
+    };
+
     const wallSize = WIDTH * SPACING;
     const halfSize = wallSize / 2;
 
-    // Invisible planes for raycasting
     return (
         <group>
-            <Interactive onSelect={handleSelect}><mesh position={[0, 0, halfSize]} rotation={[0, Math.PI, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh></Interactive>
-            <Interactive onSelect={handleSelect}><mesh position={[0, 0, -halfSize]} rotation={[0, 0, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh></Interactive>
-            <Interactive onSelect={handleSelect}><mesh position={[-halfSize, 0, 0]} rotation={[0, Math.PI / 2, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh></Interactive>
-            <Interactive onSelect={handleSelect}><mesh position={[halfSize, 0, 0]} rotation={[0, -Math.PI / 2, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh></Interactive>
-            <Interactive onSelect={handleSelect}><mesh position={[0, halfSize, 0]} rotation={[Math.PI / 2, 0, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh></Interactive>
-            <Interactive onSelect={handleSelect}><mesh position={[0, -halfSize, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh></Interactive>
+            {/* Visual Cursor */}
+            {cursorPos && (
+                <mesh position={cursorPos}>
+                    <boxGeometry args={[SPACING * 1.1, SPACING * 1.1, SPACING * 1.1]} />
+                    <meshBasicMaterial color="#ffff00" wireframe transparent opacity={0.5} />
+                </mesh>
+            )}
+
+            {/* Invisible Sensing Planes */}
+            {/* Note: interactive planes must be positioned slightly offset to match the new centering?
+                No, planes are centered at 0.
+                The grid is now centered at 0.
+                So alignment is perfect.
+            */}
+            <Interactive onSelect={handleSelect} onMove={handleHover}>
+                <mesh position={[0, 0, halfSize]} rotation={[0, Math.PI, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh>
+            </Interactive>
+            <Interactive onSelect={handleSelect} onMove={handleHover}>
+                <mesh position={[0, 0, -halfSize]} rotation={[0, 0, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh>
+            </Interactive>
+            <Interactive onSelect={handleSelect} onMove={handleHover}>
+                <mesh position={[-halfSize, 0, 0]} rotation={[0, Math.PI / 2, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh>
+            </Interactive>
+            <Interactive onSelect={handleSelect} onMove={handleHover}>
+                <mesh position={[halfSize, 0, 0]} rotation={[0, -Math.PI / 2, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh>
+            </Interactive>
+            <Interactive onSelect={handleSelect} onMove={handleHover}>
+                <mesh position={[0, halfSize, 0]} rotation={[Math.PI / 2, 0, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh>
+            </Interactive>
+            <Interactive onSelect={handleSelect} onMove={handleHover}>
+                <mesh position={[0, -halfSize, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[wallSize, wallSize]} /><meshBasicMaterial visible={false} /></mesh>
+            </Interactive>
         </group>
     );
 };
@@ -134,26 +189,25 @@ const CellInstancedMesh = ({ grid, colorMode }: { grid: Grid3DType, colorMode: '
     useEffect(() => {
         if (!meshRef.current) return;
         
+        // Centering Offset
+        const offset = (WIDTH - 1) / 2;
+
         for (let i = 0; i < TOTAL_CELLS; i++) {
             const age = grid[i];
             if (age > 0) {
                 const { x, y, z } = getCoords(i);
                 
+                // New Centered Positioning
                 dummy.position.set(
-                    (x - WIDTH / 2) * SPACING,
-                    (y - HEIGHT / 2) * SPACING,
-                    (z - DEPTH / 2) * SPACING
+                    (x - offset) * SPACING,
+                    (y - offset) * SPACING,
+                    (z - offset) * SPACING
                 );
 
                 // Flatten the cells based on which wall they are on to look like 2D panels
-                // Default scale
                 let sx = 0.9, sy = 0.9, sz = 0.9;
-                
-                // If on X-face (Left/Right), flatten X
                 if (x === 0 || x === WIDTH - 1) sx = 0.05;
-                // If on Y-face (Top/Bottom), flatten Y
                 if (y === 0 || y === HEIGHT - 1) sy = 0.05;
-                // If on Z-face (Front/Back), flatten Z
                 if (z === 0 || z === DEPTH - 1) sz = 0.05;
 
                 dummy.scale.set(sx * SPACING, sy * SPACING, sz * SPACING);
@@ -161,8 +215,8 @@ const CellInstancedMesh = ({ grid, colorMode }: { grid: Grid3DType, colorMode: '
                 meshRef.current.setMatrixAt(i, dummy.matrix);
                 
                 if (colorMode === 'neon') {
-                     const hue = (x * 5 + y * 5 + z * 5) % 360;
-                     colorHelper.setHSL(hue / 360, 1, 0.5);
+                     const hue = (x * 5 + y * 5 + z * 5 + age * 10) % 360;
+                     colorHelper.setHSL(hue / 360, 1.0, 0.6);
                 } else {
                      const intensity = Math.min(age * 0.1, 1);
                      colorHelper.setHSL(0.1 - (intensity * 0.1), 1, 0.5 + (intensity * 0.4));
@@ -183,17 +237,17 @@ const CellInstancedMesh = ({ grid, colorMode }: { grid: Grid3DType, colorMode: '
     return (
         <instancedMesh ref={meshRef} args={[undefined, undefined, TOTAL_CELLS]}>
             <boxGeometry args={[1, 1, 1]} />
-            <meshStandardMaterial 
-                transparent 
-                opacity={0.9} 
-                roughness={0.2} 
-                metalness={0.8}
-                emissive={new THREE.Color(0x000000)}
+            <meshStandardMaterial
+                transparent
+                opacity={0.9}
+                roughness={0.2}
+                metalness={0.1}
+                emissive={new THREE.Color(0x222222)}
+                emissiveIntensity={0.5}
             />
         </instancedMesh>
     );
 };
-
 // --- Main Component ---
 
 interface GameOfLife3DProps {
@@ -304,10 +358,16 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
         <div className="game-container immersive 3d-mode" style={{ position: 'relative', width: '100%', height: '100%' }}>
             <VRButton />
             <Canvas shadows dpr={[1, 2]}>
+                <color attach="background" args={['#050505']} />
+                <fog attach="fog" args={['#050505', 10, 50]} />
+                
                 <XR>
                     <PerspectiveCamera makeDefault position={[0, 0, 0]} fov={70} />
-                    <ambientLight intensity={0.2} />
-                    <pointLight position={[10, 10, 10]} intensity={1} />
+                    
+                    <ambientLight intensity={0.6} />
+                    <pointLight position={[0, 0, 0]} intensity={2} distance={20} decay={2} />
+                    <pointLight position={[10, 10, 10]} intensity={1.5} color="#bd34fe" />
+                    <pointLight position={[-10, -10, -10]} intensity={1.5} color="#61dafb" />
                     
                     <Controllers />
                     <Hands />
