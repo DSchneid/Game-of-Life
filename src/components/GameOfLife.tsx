@@ -499,10 +499,41 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       // useEffect([numRows...]) -> draw() will fire.
   };
   
-  // Re-trigger draw when size changes
+  // Re-trigger draw when size or visuals change
   useEffect(() => {
       draw();
-  }, [numRows, numCols, draw]);
+  }, [numRows, numCols, colorMode, showGridLines, draw]);
+
+  // Handle Resize
+  useEffect(() => {
+    const handleResize = () => {
+        const { rows, cols } = calculateGridDimensions();
+        
+        // Only update if dimensions actually changed significantly
+        setNumRows(prevRows => {
+            if (prevRows === rows) return prevRows;
+            
+            // Adjust grid data to new size (copy existing or pad)
+            const oldGrid = gridRef.current;
+            const newGrid = generateEmptyGrid(rows, cols);
+            for (let i = 0; i < Math.min(prevRows, rows); i++) {
+                for (let j = 0; j < Math.min(oldGrid[0]?.length || 0, cols); j++) {
+                    newGrid[i][j] = oldGrid[i][j];
+                }
+            }
+            gridRef.current = newGrid;
+            return rows;
+        });
+        
+        setNumCols(prevCols => {
+            if (prevCols === cols) return prevCols;
+            return cols;
+        });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // --- Interaction Logic (Draw/Stamp) ---
 
@@ -558,8 +589,8 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       
-      const c = Math.floor(x / 20);
-      const r = Math.floor(y / 20);
+      const c = Math.floor(x / (rect.width / numCols));
+      const r = Math.floor(y / (rect.height / numRows));
       
       if (r >= 0 && r < numRows && c >= 0 && c < numCols) {
           handleCellInteract(r, c, 'down');
@@ -576,8 +607,50 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       
-      const c = Math.floor(x / 20);
-      const r = Math.floor(y / 20);
+      const c = Math.floor(x / (rect.width / numCols));
+      const r = Math.floor(y / (rect.height / numRows));
+      
+      if (r >= 0 && r < numRows && c >= 0 && c < numCols) {
+          handleCellInteract(r, c, 'enter');
+      }
+  };
+
+  const handleCanvasTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      // Prevent scrolling while drawing
+      if (e.cancelable) e.preventDefault();
+      
+      setIsMouseDown(true);
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      
+      const c = Math.floor(x / (rect.width / numCols));
+      const r = Math.floor(y / (rect.height / numRows));
+      
+      if (r >= 0 && r < numRows && c >= 0 && c < numCols) {
+          handleCellInteract(r, c, 'down');
+      }
+  };
+
+  const handleCanvasTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+      if (!isMouseDownRef.current) return;
+      
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      if (e.cancelable) e.preventDefault();
+      
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      
+      const c = Math.floor(x / (rect.width / numCols));
+      const r = Math.floor(y / (rect.height / numRows));
       
       if (r >= 0 && r < numRows && c >= 0 && c < numCols) {
           handleCellInteract(r, c, 'enter');
@@ -600,12 +673,21 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
             overflow: 'hidden' 
         }}
         onMouseLeave={() => setIsMouseDown(false)}
+        onTouchEnd={() => setIsMouseDown(false)}
+        onTouchCancel={() => setIsMouseDown(false)}
       >
         <canvas
             ref={canvasRef}
             onMouseDown={handleCanvasMouseDown}
             onMouseMove={handleCanvasMouseMove}
-            style={{ cursor: 'crosshair' }}
+            onTouchStart={handleCanvasTouchStart}
+            onTouchMove={handleCanvasTouchMove}
+            style={{ 
+                cursor: 'crosshair',
+                width: `${numCols * 20}px`,
+                height: `${numRows * 20}px`,
+                touchAction: 'none'
+            }}
         />
       </div>
 
