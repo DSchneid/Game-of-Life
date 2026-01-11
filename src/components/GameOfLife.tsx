@@ -491,15 +491,43 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       setNumCols(c);
       gridRef.current = generateEmptyGrid(r, c);
       setGeneration(0);
-      // Wait for state update to trigger re-render? 
-      // draw() depends on numRows/numCols.
-      // useEffect([numRows...]) -> draw() will fire.
   };
   
-  // Re-trigger draw when size changes
+  // Re-trigger draw when size or visuals change
   useEffect(() => {
       draw();
-  }, [numRows, numCols, draw]);
+  }, [numRows, numCols, colorMode, showGridLines, draw]);
+
+  // Handle Resize
+  useEffect(() => {
+    const handleResize = () => {
+        const { rows, cols } = calculateGridDimensions();
+        
+        // Only update if dimensions actually changed significantly
+        setNumRows(prevRows => {
+            if (prevRows === rows) return prevRows;
+            
+            // Adjust grid data to new size (copy existing or pad)
+            const oldGrid = gridRef.current;
+            const newGrid = generateEmptyGrid(rows, cols);
+            for (let i = 0; i < Math.min(prevRows, rows); i++) {
+                for (let j = 0; j < Math.min(oldGrid[0]?.length || 0, cols); j++) {
+                    newGrid[i][j] = oldGrid[i][j];
+                }
+            }
+            gridRef.current = newGrid;
+            return rows;
+        });
+        
+        setNumCols(prevCols => {
+            if (prevCols === cols) return prevCols;
+            return cols;
+        });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // --- Interaction Logic (Draw/Stamp) ---
 
@@ -546,14 +574,16 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
 
   }, [draw]);
 
-  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+  const handleInteractionStart = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       
+      if ('cancelable' in e && e.cancelable) e.preventDefault();
       setIsMouseDown(true);
-      const rect = canvas.getBoundingClientRect();
       
+      const rect = canvas.getBoundingClientRect();
       let clientX, clientY;
+      
       if ('touches' in e) {
           clientX = e.touches[0].clientX;
           clientY = e.touches[0].clientY;
@@ -565,7 +595,6 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       const x = clientX - rect.left;
       const y = clientY - rect.top;
       
-      // Robust mapping handling CSS scaling
       const c = Math.floor((x / rect.width) * numCols);
       const r = Math.floor((y / rect.height) * numRows);
       
@@ -574,15 +603,17 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       }
   };
 
-  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+  const handleInteractionMove = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
       if (!isMouseDownRef.current) return;
       
       const canvas = canvasRef.current;
       if (!canvas) return;
       
-      const rect = canvas.getBoundingClientRect();
+      if ('cancelable' in e && e.cancelable) e.preventDefault();
       
+      const rect = canvas.getBoundingClientRect();
       let clientX, clientY;
+      
       if ('touches' in e) {
           clientX = e.touches[0].clientX;
           clientY = e.touches[0].clientY;
@@ -602,7 +633,6 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       }
   };
 
-
   return (
     <div className="game-container immersive">
       
@@ -619,14 +649,21 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
         }}
         onMouseLeave={() => setIsMouseDown(false)}
         onTouchEnd={() => setIsMouseDown(false)}
+        onTouchCancel={() => setIsMouseDown(false)}
       >
         <canvas
             ref={canvasRef}
-            onMouseDown={handleCanvasMouseDown}
-            onMouseMove={handleCanvasMouseMove}
-            onTouchStart={handleCanvasMouseDown}
-            onTouchMove={handleCanvasMouseMove}
-            style={{ cursor: 'crosshair', touchAction: 'none', width: '100%', height: '100%', display: 'block' }}
+            onMouseDown={handleInteractionStart}
+            onMouseMove={handleInteractionMove}
+            onTouchStart={handleInteractionStart}
+            onTouchMove={handleInteractionMove}
+            style={{ 
+                cursor: 'crosshair', 
+                touchAction: 'none', 
+                width: '100%', 
+                height: '100%', 
+                display: 'block' 
+            }}
         />
       </div>
 
