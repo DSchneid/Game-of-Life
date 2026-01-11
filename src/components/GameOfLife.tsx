@@ -79,6 +79,10 @@ const GameOfLife: React.FC = () => {
   const [selectedStamp, setSelectedStamp] = useState<string>('Glider');
   const [isMouseDown, setIsMouseDown] = useState(false);
 
+  // Time Travel State
+  const historyRef = useRef<GridType[]>([]);
+  const [historyLength, setHistoryLength] = useState(0);
+
   // Audio State
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [volume, setVolume] = useState(0.1);
@@ -116,10 +120,23 @@ const GameOfLife: React.FC = () => {
 
   // --- Simulation Logic ---
 
+  const addToHistory = (gridState: GridType) => {
+      // Deep copy to store
+      const stateCopy = gridState.map(row => [...row]);
+      historyRef.current.push(stateCopy);
+      if (historyRef.current.length > 100) {
+          historyRef.current.shift();
+      }
+      setHistoryLength(historyRef.current.length);
+  };
+
   const runSimulation = useCallback(() => {
     if (!runningRef.current) return;
 
     setGrid((g) => {
+      // Save current state to history before evolving
+      addToHistory(g);
+
       const rows = g.length;
       const cols = g[0].length;
       const newGrid = g.map(row => [...row]);
@@ -183,7 +200,46 @@ const GameOfLife: React.FC = () => {
     }
   };
 
+  const handleUndo = () => {
+      setRunning(false);
+      if (historyRef.current.length === 0) return;
+
+      const previousState = historyRef.current.pop();
+      if (previousState) {
+          setGrid(previousState);
+          setGeneration(g => Math.max(0, g - 1));
+          setHistoryLength(historyRef.current.length);
+      }
+  };
+
+  const handleScrub = (index: number) => {
+      // Index 0 = oldest in history
+      // Index length = current state
+      // We are scrubbing *into* the history.
+      // If we scrub, we are essentially "previewing" the past.
+      // If we "Resume" from there, we need to decide if we fork or restore.
+      // Simple Time Travel: Overwrite current grid with history[index] and truncate future.
+      
+      if (!historyRef.current[index]) return;
+      
+      const targetState = historyRef.current[index];
+      // When we scrub to 'index', we lose everything AFTER 'index'.
+      // This is destructive time travel.
+      
+      const newHistory = historyRef.current.slice(0, index);
+      historyRef.current = newHistory;
+      setHistoryLength(newHistory.length);
+      
+      setGrid(targetState.map(row => [...row]));
+      // Adjust generation count roughly (we don't track gen number in history array, so this is an estimate or we just subtract)
+      // For accuracy, we'd need to store [Grid, GenNumber] in history.
+      // For now, let's just subtract the difference.
+      const diff = historyLength - index;
+      setGeneration(g => Math.max(0, g - diff));
+  };
+
   const handleRandomize = () => {
+    addToHistory(grid); // Save state before randomizing
     const newGrid = [];
     for (let i = 0; i < numRows; i++) {
       newGrid.push(Array.from(Array(numCols), () => (Math.random() > 0.75 ? 1 : 0)));
@@ -193,6 +249,7 @@ const GameOfLife: React.FC = () => {
   };
 
   const handleClear = () => {
+    addToHistory(grid);
     setGrid(generateEmptyGrid(numRows, numCols));
     setGeneration(0);
     setRunning(false);
@@ -201,6 +258,7 @@ const GameOfLife: React.FC = () => {
   // Loads pattern in the center and clears grid (Classic "Load Preset")
   const handlePatternLoad = (patternName: string) => {
     setRunning(false);
+    addToHistory(grid);
     const pattern = PATTERNS[patternName];
     if (!pattern || pattern.length === 0) return;
 
@@ -220,6 +278,8 @@ const GameOfLife: React.FC = () => {
 
   const handleSizeChange = (r: number, c: number) => {
       setRunning(false);
+      historyRef.current = []; // Clear history on size change to avoid mismatch errors
+      setHistoryLength(0);
       setNumRows(r);
       setNumCols(c);
       setGrid(generateEmptyGrid(r, c));
@@ -231,6 +291,9 @@ const GameOfLife: React.FC = () => {
   const placeStamp = (startR: number, startC: number, patternKey: string) => {
       const pattern = PATTERNS[patternKey];
       if (!pattern) return;
+      
+      // Save for Undo
+      addToHistory(grid);
 
       setGrid(prev => {
           const newGrid = prev.map(row => [...row]);
@@ -253,6 +316,8 @@ const GameOfLife: React.FC = () => {
               return;
           }
           
+          addToHistory(grid); // Save before drawing stroke
+
           // Draw/Erase single click
           setGrid(prev => {
               const newGrid = prev.map(row => [...row]);
@@ -364,15 +429,45 @@ const GameOfLife: React.FC = () => {
                     >
                         {running ? 'PAUSE' : 'PLAY'}
                     </button>
-                    <button onClick={() => {
+                    <button 
+                        onClick={handleUndo} 
+                        disabled={running || historyLength === 0}
+                        style={{ opacity: (running || historyLength === 0) ? 0.5 : 1 }}
+                    >
+                        Undo ⏪
+                    </button>
+                </div>
+                
+                {/* Time Travel Slider */}
+                {!running && historyLength > 0 && (
+                     <div style={{marginTop: '10px'}}>
+                        <label style={{textAlign:'center', color: '#61dafb'}}>
+                             Time Travel
+                        </label>
+                        <input 
+                             type="range"
+                             min="0"
+                             max={historyLength}
+                             value={historyLength}
+                             onChange={(e) => handleScrub(Number(e.target.value))}
+                             style={{width: '100%', direction: 'ltr'}}
+                         />
+                         <div style={{fontSize: '0.8rem', color: '#666', textAlign: 'center'}}>
+                             Scrub to rewind
+                         </div>
+                     </div>
+                )}
+                
+                <div className="button-row" style={{marginTop: '10px'}}>
+                     <button onClick={() => {
                         setRunning(false);
                         const newGrid = grid.map(row => [...row]);
+                        addToHistory(grid);
                         for(let i=0; i<numRows; i++) 
                             for(let k=0; k<numCols; k++) 
                                 if(newGrid[i][k] > 0) newGrid[i][k]++; 
-                        // Note: Single step logic is complex to duplicate perfectly without extracting core engine. 
-                        // For now this just ages cells. Real step requires duplicating runSimulation logic.
-                    }}>Age</button>
+                        setGrid(newGrid);
+                    }}>Age Step</button>
                     <button onClick={handleRandomize}>Random</button>
                     <button onClick={handleClear} className="btn-danger">Clear</button>
                 </div>
