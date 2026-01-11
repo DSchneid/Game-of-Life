@@ -130,9 +130,7 @@ const GameOfLife: React.FC = () => {
       setHistoryLength(historyRef.current.length);
   };
 
-  const runSimulation = useCallback(() => {
-    if (!runningRef.current) return;
-
+  const runStep = useCallback(() => {
     setGrid((g) => {
       // Save current state to history before evolving
       addToHistory(g);
@@ -187,8 +185,13 @@ const GameOfLife: React.FC = () => {
     });
 
     setGeneration((gen) => gen + 1);
-    setTimeout(runSimulation, speedRef.current);
   }, []);
+
+  const runSimulation = useCallback(() => {
+    if (!runningRef.current) return;
+    runStep();
+    setTimeout(runSimulation, speedRef.current);
+  }, [runStep]);
 
   // --- Handlers ---
 
@@ -198,6 +201,12 @@ const GameOfLife: React.FC = () => {
       runningRef.current = true;
       runSimulation();
     }
+  };
+
+  const handleNextStep = () => {
+      setRunning(false);
+      runningRef.current = false;
+      runStep();
   };
 
   const handleUndo = () => {
@@ -459,15 +468,7 @@ const GameOfLife: React.FC = () => {
                 )}
                 
                 <div className="button-row" style={{marginTop: '10px'}}>
-                     <button onClick={() => {
-                        setRunning(false);
-                        const newGrid = grid.map(row => [...row]);
-                        addToHistory(grid);
-                        for(let i=0; i<numRows; i++) 
-                            for(let k=0; k<numCols; k++) 
-                                if(newGrid[i][k] > 0) newGrid[i][k]++; 
-                        setGrid(newGrid);
-                    }}>Age Step</button>
+                     <button onClick={handleNextStep}>Next Step ⏭️</button>
                     <button onClick={handleRandomize}>Random</button>
                     <button onClick={handleClear} className="btn-danger">Clear</button>
                 </div>
