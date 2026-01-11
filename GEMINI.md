@@ -40,6 +40,30 @@ The project features a cinematic entry experience, "Phosphor Persistence" render
     *   **Time Travel**: Rewind history and fork timelines (currently optimized for 2D).
     *   **Life Energy**: Dynamic ambient glow based on global population density.
 
+## Branches & Code Organization
+
+The repository is organized to separate the stable core from experimental features.
+
+### Active Branches
+
+*   **`main`**: The primary stable branch.
+    *   Contains the core 2D simulation, basic UI structure, and project documentation.
+*   **`feature/3d-mode`**: The active development branch for the 3D engine.
+    *   **New File**: `src/components/GameOfLife3D.tsx` (The WebGL engine).
+    *   **Dependencies**: Adds `three`, `@react-three/fiber`, and `@react-three/drei`.
+    *   **Logic**: Implements the 3D toggle and rendering loop in `App.tsx`.
+
+### Function Locations
+
+*   **Core Simulation Logic**:
+    *   **2D**: Located in `src/components/GameOfLife.tsx` (function `runStep`). Uses standard 2D array iteration.
+    *   **3D**: Located in `src/components/GameOfLife3D.tsx` (function `runStep`). Uses flattened `Uint8Array` and 26-neighbor checking.
+*   **Audio System**:
+    *   `src/utils/SoundEngine.ts`: A singleton class `SoundEngine`. Accessed via `soundEngine.playGenerationSound()`.
+*   **Rendering Loop**:
+    *   **2D**: React DOM rendering mapped from state.
+    *   **3D**: `useEffect` inside `CellInstancedMesh` updates the `InstancedMesh` matrices directly (bypassing React render cycle for performance).
+
 # Building and Running
 
 ### Prerequisites
