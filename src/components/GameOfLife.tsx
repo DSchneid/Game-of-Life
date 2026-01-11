@@ -411,6 +411,11 @@ const GameOfLife: React.FC = () => {
           }
       }
       
+      if (type === 'down' || (type === 'enter' && isMouseDownRef.current)) {
+          // INTERVENTION: Call the sound engine
+          soundEngine.playInteractionSound(interactionModeRef.current === 'erase' ? 'erase' : 'draw');
+      }
+      
       if (type === 'down') {
           addToHistory(gridRef.current);
       }
@@ -441,6 +446,8 @@ const GameOfLife: React.FC = () => {
 
   }, []); // Dependencies empty! Uses Refs.
 
+  const effectiveGridLines = showGridLines && !running;
+
   return (
     <div className="game-container immersive">
       
@@ -465,7 +472,7 @@ const GameOfLife: React.FC = () => {
                     col={k}
                     age={age}
                     colorMode={colorMode}
-                    showGridLines={showGridLines}
+                    showGridLines={effectiveGridLines}
                     onInteract={handleCellInteract}
                 />
             ))

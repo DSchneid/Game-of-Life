@@ -100,10 +100,32 @@ class SoundEngine {
       noteGain.gain.linearRampToValueAtTime(this.volume * 0.5, this.ctx.currentTime + 0.1); // Quieter
       noteGain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration + 0.2);
 
-      osc.connect(noteGain);
-      osc.start();
-      osc.stop(this.ctx.currentTime + duration + 0.3);
+    osc.connect(noteGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + duration + 0.3);
+  }
+
+  public playInteractionSound(type: 'draw' | 'erase') {
+    if (!this.enabled || !this.ctx || !this.gainNode) return;
+
+    const osc = this.ctx.createOscillator();
+    const noteGain = this.ctx.createGain();
+
+    // High pitch, short "pop" for drawing, lower "scratch" for erasing
+    const freq = type === 'draw' ? 880 : 220; // A5 vs A3
+
+    osc.type = type === 'draw' ? 'sine' : 'triangle';
+    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+
+    noteGain.connect(this.gainNode);
+    noteGain.gain.setValueAtTime(0, this.ctx.currentTime);
+    noteGain.gain.linearRampToValueAtTime(this.volume * 0.5, this.ctx.currentTime + 0.01);
+    noteGain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+
+    osc.connect(noteGain);
+    osc.start();
+    osc.stop(this.ctx.currentTime + 0.15);
   }
 }
-
-export const soundEngine = new SoundEngine();
+      
+      export const soundEngine = new SoundEngine();
