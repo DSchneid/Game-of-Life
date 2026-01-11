@@ -301,12 +301,42 @@ body {
     animation: fadeInUp 0.3s ease-out;
     display: flex;
     justify-content: center;
+    align-items: center;
+    gap: 12px;
+}
+
+.timeline-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--primary);
+    min-width: 30px;
+    text-align: center;
+    font-weight: 700;
 }
 
 .hud-timeline input[type="range"] {
-    width: 100%;
+    flex: 1;
     max-width: 400px;
-    height: 4px;
+    height: 6px;
+    -webkit-appearance: none;
+    background: rgba(255,255,255,0.1);
+    border-radius: 3px;
+    outline: none;
+}
+
+.hud-timeline input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--primary);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px var(--primary-glow);
+    transition: transform 0.1s;
+}
+
+.hud-timeline input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
 }
 
 .glass-hud {

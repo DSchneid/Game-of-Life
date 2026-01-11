@@ -454,14 +454,19 @@ const GameOfLife: React.FC = () => {
         {/* Timeline Slider */}
         {!running && historyLength > 0 && (
              <div className="hud-timeline">
+                <span className="timeline-label">-{historyLength}</span>
                 <input 
                      type="range"
                      min="0"
                      max={historyLength}
                      value={historyLength}
                      onChange={(e) => handleScrub(Number(e.target.value))}
-                     title="Scrub History"
+                     title={`Rewind history (${historyLength} frames available)`}
+                     style={{
+                         backgroundSize: `${(historyLength / 100) * 100}% 100%` 
+                     }}
                  />
+                 <span className="timeline-label">NOW</span>
              </div>
         )}
 
