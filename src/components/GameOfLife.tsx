@@ -84,7 +84,7 @@ const GameOfLife: React.FC = () => {
   const [historyLength, setHistoryLength] = useState(0);
 
   // Audio State
-  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(true);
   const [volume, setVolume] = useState(0.1);
   const [waveform, setWaveform] = useState<OscillatorType>('sine');
 
@@ -375,7 +375,7 @@ const GameOfLife: React.FC = () => {
 
   return (
     <div className="game-container">
-      <h1 className="title">GOL: <span>{selectedRule.name}</span></h1>
+      <h1 className="title">Game of Life <span>{selectedRule.name}</span></h1>
       
       <div className="main-layout">
         
