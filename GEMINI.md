@@ -29,6 +29,7 @@ The project features a cinematic entry experience, "Phosphor Persistence" render
     *   **Hybrid Dimensionality**: Seamlessly toggle between 2D pixel-art and 3D volumetric "Void Cube" modes.
     *   **Phosphor Persistence**: Cells appear instantly but fade out slowly, creating a CRT-like ghosting effect in 2D and glowing trails in 3D.
     *   **Void Design**: Deep void backgrounds with glowing, light-emitting cell structures.
+    *   **Cinematic Transition**: Immersive "Big Bang" zoom-out effect upon entering the simulation.
 
 2.  **Immersive Interaction**:
     *   **3D Navigation**: Orbit, pan, and zoom through the 3D simulation with touch-optimized controls.
@@ -38,7 +39,6 @@ The project features a cinematic entry experience, "Phosphor Persistence" render
 3.  **Advanced Simulation**:
     *   **Multi-Dimensional Rules**: Support for classic 2D rules and complex 3D rule sets (e.g., Carter Bays' 4555).
     *   **Time Travel**: Rewind history and fork timelines (currently optimized for 2D).
-    *   **Life Energy**: Dynamic ambient glow based on global population density.
 
 ## Branches & Code Organization
 
