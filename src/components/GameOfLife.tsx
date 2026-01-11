@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, memo } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { soundEngine } from '../utils/SoundEngine';
 
 // --- Types & Constants ---
@@ -79,62 +79,26 @@ const getCellColor = (age: number, colorMode: string) => {
     return '#fff';
 };
 
+// Returns { blur: number, color: string } or null
 const getCellShadow = (age: number, colorMode: string) => {
-    if (age === 0) return 'none';
+    if (age === 0) return null;
     
-    if (colorMode === 'classic') return '0 0 2px #61dafb';
+    if (colorMode === 'classic') return { blur: 2, color: '#61dafb' };
     
     const color = getCellColor(age, colorMode);
     
     // Dynamic glow intensity based on age (Newborn = brighter)
-    const intensity = age === 1 ? '15px' : '6px';
+    const blur = age === 1 ? 15 : 6;
     
     if (colorMode === 'neon') {
        const hue = (180 + (age * 10)) % 360;
-       return `0 0 ${intensity} hsl(${hue}, 100%, 50%)`;
+       return { blur, color: `hsl(${hue}, 100%, 50%)` };
     }
     if (colorMode === 'heat') {
-       return `0 0 ${intensity} ${color}`;
+       return { blur, color };
     }
-    return 'none';
+    return null;
 };
-
-// --- Memoized Cell Component ---
-
-interface CellProps {
-    age: number;
-    row: number;
-    col: number;
-    colorMode: 'classic' | 'heat' | 'neon';
-    showGridLines: boolean;
-    onInteract: (r: number, c: number, type: 'down' | 'enter') => void;
-}
-
-const Cell = memo(({ age, row, col, colorMode, showGridLines, onInteract }: CellProps) => {
-    return (
-        <div
-            className={`cell ${age > 0 ? 'alive' : ''}`}
-            style={{
-                width: 20,
-                height: 20,
-                backgroundColor: getCellColor(age, colorMode),
-                boxShadow: getCellShadow(age, colorMode),
-                border: showGridLines ? '1px solid rgba(255,255,255,0.05)' : '1px solid transparent',
-                borderRadius: colorMode === 'neon' ? '2px' : '0'
-            }}
-            onMouseDown={() => onInteract(row, col, 'down')}
-            onMouseEnter={() => onInteract(row, col, 'enter')}
-        />
-    );
-}, (prev, next) => {
-    return (
-        prev.age === next.age &&
-        prev.colorMode === next.colorMode &&
-        prev.showGridLines === next.showGridLines
-    );
-});
-
-Cell.displayName = 'MemoizedCell';
 
 
 // --- Main Component ---
@@ -207,6 +171,8 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
   
   const gridRef = useRef(grid);
   useEffect(() => { gridRef.current = grid; }, [grid]);
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Sync audio settings
   useEffect(() => {
@@ -424,24 +390,13 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
 
   // --- Interaction Logic (Draw/Stamp) ---
 
-  // We need a separate effect/ref for isMouseDown to be accessible inside the callback without re-creating it 
-  // constantly if we want to avoid re-renders during drag?
-  // To optimize: Use `useRef` for `isMouseDown` to avoid rebuilding callback.
   const isMouseDownRef = useRef(isMouseDown);
   useEffect(() => { isMouseDownRef.current = isMouseDown; }, [isMouseDown]);
 
   const handleCellInteract = useCallback((r: number, c: number, type: 'down' | 'enter') => {
       if (type === 'enter' && !isMouseDownRef.current) return;
       
-      // Stamp logic needs grid access or simplified
-      if (interactionModeRef.current === 'stamp') {
-          if (type === 'down') {
-             // Let's simplify: Stamp only on click, fine to re-create callback.
-          }
-      }
-      
       if (type === 'down' || (type === 'enter' && isMouseDownRef.current)) {
-          // INTERVENTION: Call the sound engine
           soundEngine.playInteractionSound(interactionModeRef.current === 'erase' ? 'erase' : 'draw');
       }
       
@@ -454,7 +409,8 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
           if (type === 'enter' && mode === 'stamp') return prev; 
           
           const val = mode === 'draw' ? 1 : 0;
-          if (prev[r][c] === val && mode !== 'stamp') return prev;
+          if (prev[r] && prev[r][c] === val && mode !== 'stamp') return prev;
+          if (!prev[r]) return prev; // Safety check
 
           const newGrid = prev.map(row => [...row]);
           
@@ -473,39 +429,171 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
           return newGrid;
       });
 
-  }, []); // Dependencies empty! Uses Refs.
+  }, []);
+
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      setIsMouseDown(true);
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      // Canvas scale (DPI) shouldn't affect getBoundingClientRect calculations relative to viewport
+      // But we need to map to grid coords (20px)
+      const c = Math.floor(x / 20);
+      const r = Math.floor(y / 20);
+      
+      if (r >= 0 && r < numRows && c >= 0 && c < numCols) {
+          handleCellInteract(r, c, 'down');
+      }
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!isMouseDownRef.current) return;
+      
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      const c = Math.floor(x / 20);
+      const r = Math.floor(y / 20);
+      
+      if (r >= 0 && r < numRows && c >= 0 && c < numCols) {
+          handleCellInteract(r, c, 'enter');
+      }
+  };
+
+  // --- Rendering Logic (Canvas) ---
 
   const effectiveGridLines = showGridLines && !running;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const width = numCols * 20;
+    const height = numRows * 20;
+
+    // Set display size (css)
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    // Set actual size in memory (scaled to account for extra pixel density)
+    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+    }
+
+    // Normalize coordinate system to use css pixels.
+    ctx.scale(dpr, dpr);
+    
+    // Clear
+    ctx.clearRect(0, 0, width, height);
+
+    // Draw
+    grid.forEach((row, r) => {
+        row.forEach((age, c) => {
+            const x = c * 20;
+            const y = r * 20;
+            
+            // Draw Grid Lines (Border)
+            // We draw this first or last? Original code: border on div.
+            // If we draw it first, cell might cover it.
+            // The original border was "inset" essentially because box-sizing border-box.
+            // But transparent cells showed it.
+            // Let's draw grid lines if needed.
+            if (effectiveGridLines) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x, y, 20, 20);
+            }
+
+            if (age > 0) {
+                 const color = getCellColor(age, colorMode);
+                 const shadow = getCellShadow(age, colorMode);
+                 
+                 ctx.save();
+                 if (shadow) {
+                     ctx.shadowBlur = shadow.blur;
+                     ctx.shadowColor = shadow.color;
+                 }
+                 
+                 ctx.fillStyle = color;
+                 
+                 if (colorMode === 'neon') {
+                     // Rounded rect approximation
+                     const radius = 2;
+                     ctx.beginPath();
+                     ctx.moveTo(x + radius, y);
+                     ctx.lineTo(x + 20 - radius, y);
+                     ctx.quadraticCurveTo(x + 20, y, x + 20, y + radius);
+                     ctx.lineTo(x + 20, y + 20 - radius);
+                     ctx.quadraticCurveTo(x + 20, y + 20, x + 20 - radius, y + 20);
+                     ctx.lineTo(x + radius, y + 20);
+                     ctx.quadraticCurveTo(x, y + 20, x, y + 20 - radius);
+                     ctx.lineTo(x, y + radius);
+                     ctx.quadraticCurveTo(x, y, x + radius, y);
+                     ctx.closePath();
+                     ctx.fill();
+                 } else {
+                     ctx.fillRect(x, y, 20, 20);
+                 }
+                 ctx.restore();
+            }
+        });
+    });
+
+    // Reset transform to prevent accumulation (though we set width/height which resets it usually, 
+    // but scale() stacks if we don't save/restore or reset. 
+    // Actually, setting width/height resets the context. 
+    // If width/height *didn't* change, we just scaled *on top* of previous scale?
+    // YES. We must reset transform.
+    ctx.setTransform(1, 0, 0, 1, 0, 0); 
+    // Wait, the logic above: 
+    // if size changed -> resize (resets context).
+    // if size didn't change -> scale(dpr, dpr). 
+    // If we scale again, it becomes dpr*dpr.
+    // So we MUST reset transform at start.
+    
+    // Correct logic:
+    // ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset to identity
+    // ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear physical pixels
+    // ctx.scale(dpr, dpr); // Scale for drawing
+    // ... draw ...
+
+  }, [grid, numRows, numCols, colorMode, effectiveGridLines]); 
+  // Note: we put the correction in the code below.
 
   return (
     <div className="game-container immersive">
       
-      {/* Full Screen Grid */}
+      {/* Canvas Grid Surface */}
       <div 
         className="grid-surface"
         style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${numCols}, 20px)`,
+            display: 'flex', // Changed from grid to flex to center canvas
             width: '100%',
             height: '100%',
             justifyContent: 'center',
-            alignContent: 'center',
+            alignItems: 'center', // Center vertically
+            overflow: 'hidden' // Prevent scrollbars if canvas is slightly off
         }}
         onMouseLeave={() => setIsMouseDown(false)}
       >
-        {grid.map((rows, i) => 
-            rows.map((age, k) => (
-                <Cell
-                    key={`${i}-${k}`}
-                    row={i} 
-                    col={k}
-                    age={age}
-                    colorMode={colorMode}
-                    showGridLines={effectiveGridLines}
-                    onInteract={handleCellInteract}
-                />
-            ))
-        )}
+        <canvas
+            ref={canvasRef}
+            onMouseDown={handleCanvasMouseDown}
+            onMouseMove={handleCanvasMouseMove}
+            style={{ cursor: 'crosshair' }}
+        />
       </div>
 
       {/* Toggle UI Button - Always visible if enabled from parent */}
