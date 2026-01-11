@@ -118,11 +118,16 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
   // --- State ---
   const [numRows, setNumRows] = useState(() => calculateGridDimensions().rows);
   const [numCols, setNumCols] = useState(() => calculateGridDimensions().cols);
-  const [grid, setGrid] = useState<GridType>(() => {
-      const dim = calculateGridDimensions();
-      return generateEmptyGrid(dim.rows, dim.cols);
-  });
   
+  // Use Ref for Grid State to avoid React Render Cycle Overhead
+  const gridRef = useRef<GridType>([]);
+  
+  // Initialize grid ref if empty
+  if (gridRef.current.length === 0) {
+      const dim = calculateGridDimensions();
+      gridRef.current = generateEmptyGrid(dim.rows, dim.cols);
+  }
+
   // UI Visibility State
   const [isUiVisible, setIsUiVisible] = useState(true);
   
@@ -169,10 +174,9 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
   const selectedStampRef = useRef(selectedStamp);
   selectedStampRef.current = selectedStamp;
   
-  const gridRef = useRef(grid);
-  useEffect(() => { gridRef.current = grid; }, [grid]);
-
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const requestRef = useRef<number>();
+  const lastUpdateRef = useRef<number>(0);
 
   // Sync audio settings
   useEffect(() => {
@@ -194,29 +198,106 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
     return () => window.removeEventListener('mouseup', handleWindowMouseUp);
   }, []);
 
-  // Update Life Energy CSS Variable
-  useEffect(() => {
+  // --- Rendering Logic (Canvas) ---
+  
+  const draw = useCallback(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+  
+      const dpr = window.devicePixelRatio || 1;
+      const width = numCols * 20;
+      const height = numRows * 20;
+      
+      // Update canvas size if needed
+      if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+          canvas.width = width * dpr;
+          canvas.height = height * dpr;
+          // IMPORTANT: Scale must be reset after resize
+          ctx.scale(dpr, dpr);
+      } else {
+          // If not resized, we need to clear and ensure scale is correct
+          // Setting width/height resets context, but here we didn't set it.
+          // So we must manually clear.
+          ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.scale(dpr, dpr);
+      }
+      
+      const grid = gridRef.current;
+      const effectiveGridLines = showGridLines && !runningRef.current;
+
+      // Draw Loop
       let activeCount = 0;
-      for (let i = 0; i < grid.length; i++) {
-          for (let j = 0; j < grid[0].length; j++) {
-              if (grid[i][j] > 0) activeCount++;
+      
+      // Optimize: minimize state changes
+      // However, age-based colors make batching hard without sorting.
+      // We'll stick to cell-by-cell for now but avoid unnecessary saves if possible.
+  
+      for(let r = 0; r < numRows; r++) {
+          for(let c = 0; c < numCols; c++) {
+              const age = grid[r][c];
+              const x = c * 20;
+              const y = r * 20;
+
+              // Grid Lines
+              if (effectiveGridLines) {
+                  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+                  ctx.lineWidth = 1;
+                  ctx.strokeRect(x, y, 20, 20);
+              }
+
+              if (age > 0) {
+                  activeCount++;
+                  const color = getCellColor(age, colorMode);
+                  const shadow = getCellShadow(age, colorMode);
+                  
+                  ctx.save();
+                  if (shadow) {
+                      ctx.shadowBlur = shadow.blur;
+                      ctx.shadowColor = shadow.color;
+                  }
+                  
+                  ctx.fillStyle = color;
+                  
+                  if (colorMode === 'neon') {
+                      // Rounded rect approximation
+                      const radius = 2;
+                      ctx.beginPath();
+                      ctx.moveTo(x + radius, y);
+                      ctx.lineTo(x + 20 - radius, y);
+                      ctx.quadraticCurveTo(x + 20, y, x + 20, y + radius);
+                      ctx.lineTo(x + 20, y + 20 - radius);
+                      ctx.quadraticCurveTo(x + 20, y + 20, x + 20 - radius, y + 20);
+                      ctx.lineTo(x + radius, y + 20);
+                      ctx.quadraticCurveTo(x, y + 20, x, y + 20 - radius);
+                      ctx.lineTo(x, y + radius);
+                      ctx.quadraticCurveTo(x, y, x + radius, y);
+                      ctx.closePath();
+                      ctx.fill();
+                  } else {
+                      ctx.fillRect(x, y, 20, 20);
+                  }
+                  ctx.restore();
+              }
           }
       }
-      const intensity = Math.min(activeCount / 500, 1); // Cap at 1
-      document.documentElement.style.setProperty('--life-intensity', intensity.toString());
-  }, [grid]);
 
+      // Update CSS Variable (throttled logic could go here, but this is fast enough usually)
+      const intensity = Math.min(activeCount / 500, 1); 
+      document.documentElement.style.setProperty('--life-intensity', intensity.toString());
+
+  }, [numRows, numCols, colorMode, showGridLines]);
 
   // --- Simulation Logic ---
 
   const addToHistory = (gridState: GridType) => {
-      // If we are time traveling (playbackIndex is set), we slice history first (forking)
       if (playbackIndexRef.current !== null) {
           historyRef.current = historyRef.current.slice(0, playbackIndexRef.current);
-          setPlaybackIndex(null); // Return to live head
+          setPlaybackIndex(null); 
       }
 
-      // Deep copy to store
       const stateCopy = gridState.map(row => [...row]);
       historyRef.current.push(stateCopy);
       if (historyRef.current.length > 100) {
@@ -226,12 +307,15 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
   };
 
   const runStep = useCallback(() => {
-    setGrid((g) => {
-      // Save current state to history before evolving
+      const g = gridRef.current;
+      if (!g || g.length === 0) return;
+
+      // History
       addToHistory(g);
 
       const rows = g.length;
       const cols = g[0].length;
+      // Double buffer
       const newGrid = g.map(row => [...row]);
       
       const { born, survive } = ruleRef.current;
@@ -243,7 +327,6 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
         for (let k = 0; k < cols; k++) {
           let neighbors = 0;
           
-          // Count neighbors (wrapping around edges for infinite feel)
           OPERATIONS.forEach(([x, y]) => {
             const newI = (i + x + rows) % rows;
             const newK = (k + y + cols) % cols;
@@ -256,13 +339,13 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
           
           if (isAlive) {
             if (!survive.includes(neighbors)) {
-              newGrid[i][k] = 0; // Dies
+              newGrid[i][k] = 0; 
             } else {
-              newGrid[i][k] += 1; // Ages
+              newGrid[i][k] += 1; 
             }
           } else {
             if (born.includes(neighbors)) {
-              newGrid[i][k] = 1; // Born
+              newGrid[i][k] = 1; 
               bornCount++;
               bornRowSum += i;
             }
@@ -270,43 +353,66 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
         }
       }
 
-      // Trigger Sound if births occurred
+      // Update Ref
+      gridRef.current = newGrid;
+
+      // Audio
       if (bornCount > 0) {
         const avgRow = bornRowSum / bornCount;
         soundEngine.playGenerationSound(bornCount, avgRow, rows);
       }
+      
+      // Update Gen Counter (State - triggers render)
+      // To prevent UI lag on high speed, we could debounce this, but React 18 batching helps.
+      setGeneration((gen) => gen + 1);
 
-      return newGrid;
-    });
+      // Draw
+      draw();
 
-    setGeneration((gen) => gen + 1);
-  }, []);
+  }, [draw]);
 
-  const runSimulation = useCallback(() => {
-    if (!runningRef.current) return;
-    runStep();
-    setTimeout(runSimulation, speedRef.current);
+
+  // Game Loop using requestAnimationFrame
+  const animate = useCallback((time: number) => {
+      if (!runningRef.current) return;
+      
+      const deltaTime = time - lastUpdateRef.current;
+      
+      if (deltaTime >= speedRef.current) {
+          runStep();
+          lastUpdateRef.current = time;
+      }
+      
+      requestRef.current = requestAnimationFrame(animate);
   }, [runStep]);
+
+
+  useEffect(() => {
+      if (running) {
+          lastUpdateRef.current = performance.now();
+          requestRef.current = requestAnimationFrame(animate);
+      } else {
+          if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      }
+      return () => {
+          if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      };
+  }, [running, animate]);
+
+  // Initial Draw
+  useEffect(() => {
+      draw();
+  }, [draw, colorMode, showGridLines]);
+
 
   // --- Handlers ---
 
   const handleStartStop = () => {
-    // If we start running while in history, we resume from that point (fork)
-    if (!running && playbackIndex !== null) {
-        // We don't need to do anything special here because runStep calls addToHistory
-        // which checks playbackIndex and slices accordingly.
-    }
-    
     setRunning(!running);
-    if (!running) {
-      runningRef.current = true;
-      runSimulation();
-    }
   };
 
   const handleNextStep = () => {
       setRunning(false);
-      runningRef.current = false;
       runStep();
   };
 
@@ -316,50 +422,51 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
 
       const previousState = historyRef.current.pop();
       if (previousState) {
-          setGrid(previousState);
+          gridRef.current = previousState;
           setGeneration(g => Math.max(0, g - 1));
           setHistoryLength(historyRef.current.length);
-          setPlaybackIndex(null); // Reset preview on undo
+          setPlaybackIndex(null);
+          draw();
       }
   };
 
   const handleScrub = (index: number) => {
-      // Non-destructive preview
       if (!historyRef.current[index]) return;
       
       const targetState = historyRef.current[index];
-      
-      // Update the preview index
       setPlaybackIndex(index);
       
-      // Show the state
-      setGrid(targetState.map(row => [...row]));
+      // Update visual grid without changing 'live' state logic deeply
+      // We just copy it to current ref to display it.
+      // Note: If user hits play, it forks from here.
+      gridRef.current = targetState.map(row => [...row]);
       
-      // Update generation display (visual only)
-      // Note: This is an estimation because we don't store gen number in history
       setGeneration(g => Math.max(0, g)); 
+      draw();
   };
 
   const handleRandomize = () => {
-    addToHistory(grid);
+    addToHistory(gridRef.current);
     const newGrid = [];
     for (let i = 0; i < numRows; i++) {
       newGrid.push(Array.from(Array(numCols), () => (Math.random() > 0.75 ? 1 : 0)));
     }
-    setGrid(newGrid);
+    gridRef.current = newGrid;
     setGeneration(0);
+    draw();
   };
 
   const handleClear = () => {
-    addToHistory(grid);
-    setGrid(generateEmptyGrid(numRows, numCols));
+    addToHistory(gridRef.current);
+    gridRef.current = generateEmptyGrid(numRows, numCols);
     setGeneration(0);
     setRunning(false);
+    draw();
   };
 
   const handlePatternLoad = (patternName: string) => {
     setRunning(false);
-    addToHistory(grid);
+    addToHistory(gridRef.current);
     const pattern = PATTERNS[patternName];
     if (!pattern || pattern.length === 0) return;
 
@@ -373,8 +480,9 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
         newGrid[x][y] = 1;
     });
 
-    setGrid(newGrid);
+    gridRef.current = newGrid;
     setGeneration(0);
+    draw();
   };
 
   const handleSizeChange = (r: number, c: number) => {
@@ -384,9 +492,17 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       setPlaybackIndex(null);
       setNumRows(r);
       setNumCols(c);
-      setGrid(generateEmptyGrid(r, c));
+      gridRef.current = generateEmptyGrid(r, c);
       setGeneration(0);
+      // Wait for state update to trigger re-render? 
+      // draw() depends on numRows/numCols.
+      // useEffect([numRows...]) -> draw() will fire.
   };
+  
+  // Re-trigger draw when size changes
+  useEffect(() => {
+      draw();
+  }, [numRows, numCols, draw]);
 
   // --- Interaction Logic (Draw/Stamp) ---
 
@@ -404,32 +520,34 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
           addToHistory(gridRef.current);
       }
 
-      setGrid(prev => {
-          const mode = interactionModeRef.current;
-          if (type === 'enter' && mode === 'stamp') return prev; 
-          
-          const val = mode === 'draw' ? 1 : 0;
-          if (prev[r] && prev[r][c] === val && mode !== 'stamp') return prev;
-          if (!prev[r]) return prev; // Safety check
+      const prev = gridRef.current;
+      const mode = interactionModeRef.current;
+      
+      if (type === 'enter' && mode === 'stamp') return; 
+      
+      const val = mode === 'draw' ? 1 : 0;
+      if (prev[r] && prev[r][c] === val && mode !== 'stamp') return;
+      if (!prev[r]) return; 
 
-          const newGrid = prev.map(row => [...row]);
-          
-          if (mode === 'stamp' && type === 'down') {
-             const pattern = PATTERNS[selectedStampRef.current];
-             if (pattern) {
-                pattern.forEach(([pr, pc]) => {
-                    const targetR = (r + pr + prev.length) % prev.length;
-                    const targetC = (c + pc + prev[0].length) % prev[0].length;
-                    newGrid[targetR][targetC] = 1; 
-                });
-             }
-          } else {
-             newGrid[r][c] = val;
-          }
-          return newGrid;
-      });
+      const newGrid = prev.map(row => [...row]);
+      
+      if (mode === 'stamp' && type === 'down') {
+         const pattern = PATTERNS[selectedStampRef.current];
+         if (pattern) {
+            pattern.forEach(([pr, pc]) => {
+                const targetR = (r + pr + prev.length) % prev.length;
+                const targetC = (c + pc + prev[0].length) % prev[0].length;
+                newGrid[targetR][targetC] = 1; 
+            });
+         }
+      } else {
+         newGrid[r][c] = val;
+      }
+      
+      gridRef.current = newGrid;
+      draw();
 
-  }, []);
+  }, [draw]);
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
@@ -440,8 +558,6 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       
-      // Canvas scale (DPI) shouldn't affect getBoundingClientRect calculations relative to viewport
-      // But we need to map to grid coords (20px)
       const c = Math.floor(x / 20);
       const r = Math.floor(y / 20);
       
@@ -468,109 +584,6 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       }
   };
 
-  // --- Rendering Logic (Canvas) ---
-
-  const effectiveGridLines = showGridLines && !running;
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const width = numCols * 20;
-    const height = numRows * 20;
-
-    // Set display size (css)
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-
-    // Set actual size in memory (scaled to account for extra pixel density)
-    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-    }
-
-    // Normalize coordinate system to use css pixels.
-    ctx.scale(dpr, dpr);
-    
-    // Clear
-    ctx.clearRect(0, 0, width, height);
-
-    // Draw
-    grid.forEach((row, r) => {
-        row.forEach((age, c) => {
-            const x = c * 20;
-            const y = r * 20;
-            
-            // Draw Grid Lines (Border)
-            // We draw this first or last? Original code: border on div.
-            // If we draw it first, cell might cover it.
-            // The original border was "inset" essentially because box-sizing border-box.
-            // But transparent cells showed it.
-            // Let's draw grid lines if needed.
-            if (effectiveGridLines) {
-                ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(x, y, 20, 20);
-            }
-
-            if (age > 0) {
-                 const color = getCellColor(age, colorMode);
-                 const shadow = getCellShadow(age, colorMode);
-                 
-                 ctx.save();
-                 if (shadow) {
-                     ctx.shadowBlur = shadow.blur;
-                     ctx.shadowColor = shadow.color;
-                 }
-                 
-                 ctx.fillStyle = color;
-                 
-                 if (colorMode === 'neon') {
-                     // Rounded rect approximation
-                     const radius = 2;
-                     ctx.beginPath();
-                     ctx.moveTo(x + radius, y);
-                     ctx.lineTo(x + 20 - radius, y);
-                     ctx.quadraticCurveTo(x + 20, y, x + 20, y + radius);
-                     ctx.lineTo(x + 20, y + 20 - radius);
-                     ctx.quadraticCurveTo(x + 20, y + 20, x + 20 - radius, y + 20);
-                     ctx.lineTo(x + radius, y + 20);
-                     ctx.quadraticCurveTo(x, y + 20, x, y + 20 - radius);
-                     ctx.lineTo(x, y + radius);
-                     ctx.quadraticCurveTo(x, y, x + radius, y);
-                     ctx.closePath();
-                     ctx.fill();
-                 } else {
-                     ctx.fillRect(x, y, 20, 20);
-                 }
-                 ctx.restore();
-            }
-        });
-    });
-
-    // Reset transform to prevent accumulation (though we set width/height which resets it usually, 
-    // but scale() stacks if we don't save/restore or reset. 
-    // Actually, setting width/height resets the context. 
-    // If width/height *didn't* change, we just scaled *on top* of previous scale?
-    // YES. We must reset transform.
-    ctx.setTransform(1, 0, 0, 1, 0, 0); 
-    // Wait, the logic above: 
-    // if size changed -> resize (resets context).
-    // if size didn't change -> scale(dpr, dpr). 
-    // If we scale again, it becomes dpr*dpr.
-    // So we MUST reset transform at start.
-    
-    // Correct logic:
-    // ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset to identity
-    // ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear physical pixels
-    // ctx.scale(dpr, dpr); // Scale for drawing
-    // ... draw ...
-
-  }, [grid, numRows, numCols, colorMode, effectiveGridLines]); 
-  // Note: we put the correction in the code below.
 
   return (
     <div className="game-container immersive">
@@ -579,12 +592,12 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       <div 
         className="grid-surface"
         style={{
-            display: 'flex', // Changed from grid to flex to center canvas
+            display: 'flex', 
             width: '100%',
             height: '100%',
             justifyContent: 'center',
-            alignItems: 'center', // Center vertically
-            overflow: 'hidden' // Prevent scrollbars if canvas is slightly off
+            alignItems: 'center', 
+            overflow: 'hidden' 
         }}
         onMouseLeave={() => setIsMouseDown(false)}
       >
@@ -596,7 +609,7 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
         />
       </div>
 
-      {/* Toggle UI Button - Always visible if enabled from parent */}
+      {/* Toggle UI Button */}
       {enableUI && (
         <button 
             className={`ui-toggle-btn ${!isUiVisible ? 'hidden-ui' : ''}`}
