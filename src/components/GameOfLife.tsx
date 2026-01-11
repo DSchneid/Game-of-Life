@@ -107,10 +107,12 @@ interface GameOfLifeProps {
     enableUI?: boolean;
 }
 
+const getCellSize = () => window.innerWidth < 768 ? 12 : 20;
+
 const calculateGridDimensions = () => {
-    // 20px cell size
-    const cols = Math.floor(window.innerWidth / 20);
-    const rows = Math.floor(window.innerHeight / 20);
+    const cellSize = getCellSize();
+    const cols = Math.floor(window.innerWidth / cellSize);
+    const rows = Math.floor(window.innerHeight / cellSize);
     return { rows, cols };
 };
 
@@ -207,8 +209,9 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
       if (!ctx) return;
   
       const dpr = window.devicePixelRatio || 1;
-      const width = numCols * 20;
-      const height = numRows * 20;
+      const cellSize = getCellSize();
+      const width = numCols * cellSize;
+      const height = numRows * cellSize;
       
       // Update canvas size if needed
       if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
@@ -218,8 +221,6 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
           ctx.scale(dpr, dpr);
       } else {
           // If not resized, we need to clear and ensure scale is correct
-          // Setting width/height resets context, but here we didn't set it.
-          // So we must manually clear.
           ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           ctx.scale(dpr, dpr);
@@ -230,22 +231,18 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
 
       // Draw Loop
       let activeCount = 0;
-      
-      // Optimize: minimize state changes
-      // However, age-based colors make batching hard without sorting.
-      // We'll stick to cell-by-cell for now but avoid unnecessary saves if possible.
   
       for(let r = 0; r < numRows; r++) {
           for(let c = 0; c < numCols; c++) {
               const age = grid[r][c];
-              const x = c * 20;
-              const y = r * 20;
+              const x = c * cellSize;
+              const y = r * cellSize;
 
               // Grid Lines
               if (effectiveGridLines) {
                   ctx.strokeStyle = 'rgba(255,255,255,0.05)';
                   ctx.lineWidth = 1;
-                  ctx.strokeRect(x, y, 20, 20);
+                  ctx.strokeRect(x, y, cellSize, cellSize);
               }
 
               if (age > 0) {
@@ -266,25 +263,25 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
                       const radius = 2;
                       ctx.beginPath();
                       ctx.moveTo(x + radius, y);
-                      ctx.lineTo(x + 20 - radius, y);
-                      ctx.quadraticCurveTo(x + 20, y, x + 20, y + radius);
-                      ctx.lineTo(x + 20, y + 20 - radius);
-                      ctx.quadraticCurveTo(x + 20, y + 20, x + 20 - radius, y + 20);
-                      ctx.lineTo(x + radius, y + 20);
-                      ctx.quadraticCurveTo(x, y + 20, x, y + 20 - radius);
+                      ctx.lineTo(x + cellSize - radius, y);
+                      ctx.quadraticCurveTo(x + cellSize, y, x + cellSize, y + radius);
+                      ctx.lineTo(x + cellSize, y + cellSize - radius);
+                      ctx.quadraticCurveTo(x + cellSize, y + cellSize, x + cellSize - radius, y + cellSize);
+                      ctx.lineTo(x + radius, y + cellSize);
+                      ctx.quadraticCurveTo(x, y + cellSize, x, y + cellSize - radius);
                       ctx.lineTo(x, y + radius);
                       ctx.quadraticCurveTo(x, y, x + radius, y);
                       ctx.closePath();
                       ctx.fill();
                   } else {
-                      ctx.fillRect(x, y, 20, 20);
+                      ctx.fillRect(x, y, cellSize, cellSize);
                   }
                   ctx.restore();
               }
           }
       }
 
-      // Update CSS Variable (throttled logic could go here, but this is fast enough usually)
+      // Update CSS Variable
       const intensity = Math.min(activeCount / 500, 1); 
       document.documentElement.style.setProperty('--life-intensity', intensity.toString());
 
@@ -549,35 +546,56 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
 
   }, [draw]);
 
-  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       
       setIsMouseDown(true);
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
       
-      const c = Math.floor(x / 20);
-      const r = Math.floor(y / 20);
+      let clientX, clientY;
+      if ('touches' in e) {
+          clientX = e.touches[0].clientX;
+          clientY = e.touches[0].clientY;
+      } else {
+          clientX = (e as React.MouseEvent).clientX;
+          clientY = (e as React.MouseEvent).clientY;
+      }
+
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      
+      // Robust mapping handling CSS scaling
+      const c = Math.floor((x / rect.width) * numCols);
+      const r = Math.floor((y / rect.height) * numRows);
       
       if (r >= 0 && r < numRows && c >= 0 && c < numCols) {
           handleCellInteract(r, c, 'down');
       }
   };
 
-  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
       if (!isMouseDownRef.current) return;
       
       const canvas = canvasRef.current;
       if (!canvas) return;
       
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
       
-      const c = Math.floor(x / 20);
-      const r = Math.floor(y / 20);
+      let clientX, clientY;
+      if ('touches' in e) {
+          clientX = e.touches[0].clientX;
+          clientY = e.touches[0].clientY;
+      } else {
+          clientX = (e as React.MouseEvent).clientX;
+          clientY = (e as React.MouseEvent).clientY;
+      }
+
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      
+      const c = Math.floor((x / rect.width) * numCols);
+      const r = Math.floor((y / rect.height) * numRows);
       
       if (r >= 0 && r < numRows && c >= 0 && c < numCols) {
           handleCellInteract(r, c, 'enter');
@@ -600,12 +618,15 @@ const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
             overflow: 'hidden' 
         }}
         onMouseLeave={() => setIsMouseDown(false)}
+        onTouchEnd={() => setIsMouseDown(false)}
       >
         <canvas
             ref={canvasRef}
             onMouseDown={handleCanvasMouseDown}
             onMouseMove={handleCanvasMouseMove}
-            style={{ cursor: 'crosshair' }}
+            onTouchStart={handleCanvasMouseDown}
+            onTouchMove={handleCanvasMouseMove}
+            style={{ cursor: 'crosshair', touchAction: 'none', width: '100%', height: '100%', display: 'block' }}
         />
       </div>
 

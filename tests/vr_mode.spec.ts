@@ -44,15 +44,26 @@ test('3D Mode loads without crashing', async ({ page }) => {
       }
   }
 
-  // Check for "ENTER VR" OR "VR unsupported" (Success case for desktop/headless)
+  // Check for "ENTER VR" OR "VR unsupported"
   const vrBtn = page.getByRole('button', { name: 'ENTER VR' });
   const unsupportedBtn = page.getByRole('button', { name: 'VR unsupported' });
   
   try {
-      // Wait for either button to appear
       await expect(vrBtn.or(unsupportedBtn)).toBeVisible({ timeout: 5000 });
-      console.log('SUCCESS: 3D Mode loaded. VR Button (or unsupported message) is visible.');
-      await page.screenshot({ path: 'success-screenshot.png' });
+      console.log('SUCCESS: 3D Mode loaded.');
+      
+      // Perform Interaction Test (Click center of screen to toggle cell)
+      // The canvas is centered.
+      const viewport = page.viewportSize();
+      if (viewport) {
+          console.log('Performing Raycast Click Test...');
+          await page.mouse.click(viewport.width / 2, viewport.height / 2);
+          // Wait for haptic/state update (visuals)
+          await page.waitForTimeout(500); 
+          await page.screenshot({ path: 'interaction-check.png' });
+          console.log('Interaction performed (Screenshot saved).');
+      }
+
   } catch (e) {
       console.error('FAIL: Neither ENTER VR nor VR unsupported button found.');
       await page.screenshot({ path: 'fail-screenshot.png' });
