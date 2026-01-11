@@ -1,0 +1,209 @@
+:root {
+  --bg-color: #121212;
+  --panel-bg: #1e1e1e;
+  --text-primary: #e0e0e0;
+  --text-secondary: #aaaaaa;
+  --accent: #61dafb;
+  --danger: #ff4d4d;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  overflow: hidden; /* Prevent scrolling if possible */
+}
+
+h1.title {
+  font-size: 2rem;
+  margin: 1rem 0;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+h1.title span {
+  color: var(--accent);
+  font-size: 1rem;
+  vertical-align: middle;
+  background: rgba(97, 218, 251, 0.1);
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.game-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  align-items: center;
+}
+
+.main-layout {
+  display: flex;
+  gap: 2rem;
+  padding: 1rem;
+  height: calc(100% - 100px);
+  width: 100%;
+  max-width: 1400px;
+  justify-content: center;
+}
+
+/* Sidebar Styles */
+.sidebar {
+  width: 280px;
+  background: var(--panel-bg);
+  padding: 1.5rem;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  overflow-y: auto;
+}
+
+.control-group h3 {
+  margin: 0 0 0.8rem 0;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border-bottom: 1px solid #333;
+  padding-bottom: 4px;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+button {
+  flex: 1;
+  padding: 0.6rem;
+  border: none;
+  background: #333;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+  min-width: 70px;
+}
+
+button:hover {
+  background: #444;
+  transform: translateY(-1px);
+}
+
+.btn-start {
+  background: #2e7d32;
+}
+.btn-start:hover { background: #388e3c; }
+
+.btn-stop {
+  background: #c62828;
+}
+.btn-stop:hover { background: #d32f2f; }
+
+.btn-danger {
+    background: #552222;
+}
+.btn-danger:hover {
+    background: #772222;
+}
+
+/* Inputs and Selects */
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  margin-bottom: 0.8rem;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+select {
+  width: 100%;
+  padding: 8px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: white;
+  border-radius: 6px;
+  margin-bottom: 0.8rem;
+  cursor: pointer;
+}
+
+.checkbox-label {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+.checkbox-label input {
+    width: auto;
+}
+
+/* Visual Toggles */
+.toggle-group {
+    display: flex;
+    background: #111;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+.toggle-btn {
+    background: transparent;
+    color: #666;
+    padding: 6px;
+    font-size: 0.8rem;
+}
+
+.toggle-btn.active {
+    background: #333;
+    color: var(--accent);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* Stats */
+.stats {
+    margin-top: auto;
+    background: #111;
+    padding: 1rem;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 1.1rem;
+    color: var(--accent);
+}
+
+/* Grid Wrapper */
+.grid-wrapper {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #000;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: inset 0 0 50px rgba(0,0,0,0.8);
+  overflow: auto;
+  border: 1px solid #333;
+}
+
+.grid {
+    background: #000;
+    /* Optional: Centering logic if grid is smaller than wrapper */
+}
+
+.cell {
+  transition: background-color 0.1s;
+  cursor: pointer;
+}
+.cell:hover {
+    border-color: rgba(255,255,255,0.3) !important;
+}
