@@ -1,0 +1,71 @@
+/* src/index.css additions for Intro Overlay */
+
+.intro-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.4); /* Slight dim to pop text */
+    backdrop-filter: blur(2px);
+}
+
+.intro-content {
+    text-align: center;
+    animation: fadeIn 2s ease-out;
+}
+
+.intro-title {
+    font-size: 6rem;
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: -2px;
+    color: #fff;
+    margin-bottom: 3rem;
+    text-shadow: 0 0 30px rgba(97, 218, 251, 0.5);
+}
+
+.intro-glitch {
+    font-size: 2rem;
+    color: var(--primary);
+    display: block;
+    margin-bottom: 0.5rem;
+    letter-spacing: 10px;
+    font-weight: 400;
+    text-transform: uppercase;
+}
+
+.intro-cta {
+    background: transparent;
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 1.5rem 4rem;
+    font-size: 1.5rem;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.intro-cta:hover {
+    background: #fff;
+    color: #000;
+    box-shadow: 0 0 50px rgba(255,255,255,0.5);
+    border-color: #fff;
+    transform: scale(1.05);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@media (max-width: 768px) {
+    .intro-title { font-size: 3rem; }
+    .intro-glitch { font-size: 1rem; }
+}

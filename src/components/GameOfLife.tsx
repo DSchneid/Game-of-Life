@@ -139,7 +139,11 @@ Cell.displayName = 'MemoizedCell';
 
 // --- Main Component ---
 
-const GameOfLife: React.FC = () => {
+interface GameOfLifeProps {
+    enableUI?: boolean;
+}
+
+const GameOfLife: React.FC<GameOfLifeProps> = ({ enableUI = true }) => {
   // --- State ---
   const [numRows, setNumRows] = useState(40);
   const [numCols, setNumCols] = useState(50);
@@ -492,6 +496,7 @@ const GameOfLife: React.FC = () => {
       </div>
 
       {/* Glass HUD Container */}
+      {enableUI && (
       <div className="glass-hud-container">
         
         {/* Timeline Slider */}
@@ -590,9 +595,10 @@ const GameOfLife: React.FC = () => {
           </div>
         </div>
       </div>
+      )}
 
       {/* Settings Overlay */}
-      {showSettings && (
+      {enableUI && showSettings && (
           <div className="settings-panel glass-panel">
               <div className="settings-header">
                   <h3>Configuration</h3>
