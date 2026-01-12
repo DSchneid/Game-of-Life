@@ -48,274 +48,190 @@ const generateRandomGrid = (): Grid3DType => {
 
 // --- VR / Desktop Interaction Components ---
 
-
-
-const InteractionLayer = ({ onToggleCell, onTogglePause }: { 
-
-    onToggleCell: (x: number, y: number, z: number) => void,
-
-    onTogglePause: () => void 
-
-}) => {
-
-    const { controllers, isPresenting } = useXR();
-
-    const lastAButtonPressed = useRef(false);
-
-    const [cursorPos, setCursorPos] = useState<[number, number, number] | null>(null);
-
-
-
-    // --- XR Controller Logic ---
-
+const LaserBeam = ({ controller }: { controller: any }) => {
+    const beamRef = useRef<THREE.Mesh>(null);
+    
     useFrame(() => {
-
-        const rightController = controllers.find(c => c.inputSource?.handedness === 'right');
-
-        if (rightController?.inputSource?.gamepad) {
-
-            const gamepad = rightController.inputSource.gamepad;
-
-            const aButtonPressed = gamepad.buttons[4]?.pressed || gamepad.buttons[5]?.pressed; 
-
-            
-
-            if (aButtonPressed && !lastAButtonPressed.current) {
-
-                onTogglePause();
-
-                if (gamepad.hapticActuators?.[0]) {
-
-                    gamepad.hapticActuators[0].pulse(0.4, 100);
-
-                }
-
-            }
-
-            lastAButtonPressed.current = !!aButtonPressed;
-
-        }
-
+        if (!beamRef.current) return;
+        // Standard Quest beam is thin, long, and fades out
+        // The beam is already attached to the controller group in XR, 
+        // but we can customize its appearance here.
     });
 
+    return (
+        <mesh rotation-x={-Math.PI / 2} position={[0, 0, -5]}>
+            <cylinderGeometry args={[0.005, 0.005, 10, 8]} />
+            <meshBasicMaterial color="#61dafb" transparent opacity={0.5} />
+        </mesh>
+    );
+};
 
+const TargetRing = ({ position }: { position: [number, number, number] }) => (
+    <group position={position}>
+        <mesh rotation-x={-Math.PI / 2}>
+            <ringGeometry args={[0.03, 0.04, 32]} />
+            <meshBasicMaterial color="#61dafb" transparent opacity={0.8} />
+        </mesh>
+        <mesh>
+            <sphereGeometry args={[0.01, 16, 16]} />
+            <meshBasicMaterial color="#ffffff" />
+        </mesh>
+    </group>
+);
+
+const InteractionLayer = ({ onToggleCell, onTogglePause }: { 
+    onToggleCell: (x: number, y: number, z: number) => void,
+    onTogglePause: () => void 
+}) => {
+    const { controllers, isPresenting } = useXR();
+    const lastAButtonPressed = useRef(false);
+    
+    // Store intersections per controller
+    const [intersections, setIntersections] = useState<Map<number, THREE.Vector3>>(new Map());
+    const [desktopCursor, setDesktopCursor] = useState<THREE.Vector3 | null>(null);
+
+    // --- XR Controller Logic ---
+    useFrame(() => {
+        const rightController = controllers.find(c => c.inputSource?.handedness === 'right');
+        if (rightController?.inputSource?.gamepad) {
+            const gamepad = rightController.inputSource.gamepad;
+            const aButtonPressed = gamepad.buttons[4]?.pressed || gamepad.buttons[5]?.pressed; 
+            
+            if (aButtonPressed && !lastAButtonPressed.current) {
+                onTogglePause();
+                if (gamepad.hapticActuators?.[0]) {
+                    gamepad.hapticActuators[0].pulse(0.4, 100);
+                }
+            }
+            lastAButtonPressed.current = !!aButtonPressed;
+        }
+    });
 
     // --- Shared Logic ---
-
     const getGridFromPoint = (point: THREE.Vector3) => {
-
         const offset = (WIDTH - 1) / 2;
-
         let gx = Math.round(point.x / SPACING + offset);
-
         let gy = Math.round(point.y / SPACING + offset);
-
         let gz = Math.round(point.z / SPACING + offset);
 
-
-
         gx = Math.max(0, Math.min(WIDTH - 1, gx));
-
         gy = Math.max(0, Math.min(HEIGHT - 1, gy));
-
         gz = Math.max(0, Math.min(DEPTH - 1, gz));
-
         
-
         return { gx, gy, gz };
-
     }
-
-
-
-    const updateCursor = (point: THREE.Vector3) => {
-
-        const { gx, gy, gz } = getGridFromPoint(point);
-
-        const offset = (WIDTH - 1) / 2;
-
-        const wx = (gx - offset) * SPACING;
-
-        const wy = (gy - offset) * SPACING;
-
-        const wz = (gz - offset) * SPACING;
-
-        setCursorPos([wx, wy, wz]);
-
-    }
-
-
 
     // --- Event Handlers ---
 
-
-
     // VR: Selection
-
     const handleSelect = (e: any) => {
-
         if (!e.intersection) return;
-
         const { gx, gy, gz } = getGridFromPoint(e.intersection.point);
-
         onToggleCell(gx, gy, gz);
-
         
-
         const gamepad = e.controller?.inputSource?.gamepad;
-
         if (gamepad?.hapticActuators?.[0]) {
-
             gamepad.hapticActuators[0].pulse(0.8, 50);
-
         }
-
     };
-
-
 
     // VR: Hover
-
     const handleMove = (e: any) => {
-
-        if (e.intersection) updateCursor(e.intersection.point);
-
-        else setCursorPos(null);
-
+        const id = e.controller.inputSource.handedness === 'right' ? 1 : 0;
+        if (e.intersection) {
+            setIntersections(prev => new Map(prev).set(id, e.intersection.point.clone()));
+        } else {
+            setIntersections(prev => {
+                const next = new Map(prev);
+                next.delete(id);
+                return next;
+            });
+        }
     };
 
-
+    const handleBlur = (e: any) => {
+        const id = e.controller.inputSource.handedness === 'right' ? 1 : 0;
+        setIntersections(prev => {
+            const next = new Map(prev);
+            next.delete(id);
+            return next;
+        });
+    };
 
     // Desktop: Click
-
     const handlePointerDown = (e: any) => {
-
-        // Prevent interaction if we are just rotating the camera
-
-        // (OrbitControls handles drag, but click might fire. We usually check delta, but simple is ok for now)
-
         e.stopPropagation(); 
-
         const { gx, gy, gz } = getGridFromPoint(e.point);
-
         onToggleCell(gx, gy, gz);
-
     };
-
-
 
     // Desktop: Hover
-
     const handlePointerMove = (e: any) => {
-
         e.stopPropagation();
-
-        updateCursor(e.point);
-
+        setDesktopCursor(e.point.clone());
     };
 
-
-
     const wallSize = WIDTH * SPACING;
-
     const halfSize = wallSize / 2;
 
-
-
-    // We use standard <mesh> events for Desktop and <Interactive> for VR
-
     const PlaneMesh = (props: any) => (
-
         <mesh 
-
             {...props} 
-
             onPointerDown={!isPresenting ? handlePointerDown : undefined}
-
             onPointerMove={!isPresenting ? handlePointerMove : undefined}
-
-            onPointerOut={() => setCursorPos(null)}
-
+            onPointerOut={() => setDesktopCursor(null)}
         >
-
             <planeGeometry args={[wallSize, wallSize]} />
-
             <meshBasicMaterial visible={false} />
-
         </mesh>
-
     );
 
-
-
     return (
-
         <group>
+            {/* VR Beams and Targets */}
+            {isPresenting && controllers.map((controller, i) => {
+                const id = controller.inputSource?.handedness === 'right' ? 1 : 0;
+                const point = intersections.get(id);
+                return (
+                    <group key={i}>
+                        {/* Custom Beam attached to controller */}
+                        <primitive object={controller.controller}>
+                            <LaserBeam controller={controller} />
+                        </primitive>
+                        {/* Target hit point */}
+                        {point && <TargetRing position={[point.x, point.y, point.z]} />}
+                    </group>
+                );
+            })}
 
-            {/* Visual Cursor */}
-
-            {cursorPos && (
-
-                <mesh position={cursorPos}>
-
-                    <boxGeometry args={[SPACING * 1.1, SPACING * 1.1, SPACING * 1.1]} />
-
-                    <meshBasicMaterial color="#ffff00" wireframe transparent opacity={0.5} />
-
-                </mesh>
-
+            {/* Desktop Cursor */}
+            {!isPresenting && desktopCursor && (
+                <TargetRing position={[desktopCursor.x, desktopCursor.y, desktopCursor.z]} />
             )}
-
-
-
-            {/* Desktop Orbit Controls (Only active if not in VR) */}
 
             {!isPresenting && <OrbitControls makeDefault enablePan={false} minDistance={1} maxDistance={50} />}
 
-
-
             {/* Sensing Planes */}
-
-            <Interactive onSelect={handleSelect} onMove={handleMove}>
-
+            <Interactive onSelect={handleSelect} onMove={handleMove} onBlur={handleBlur}>
                 <PlaneMesh position={[0, 0, halfSize]} rotation={[0, Math.PI, 0]} />
-
             </Interactive>
-
-            <Interactive onSelect={handleSelect} onMove={handleMove}>
-
+            <Interactive onSelect={handleSelect} onMove={handleMove} onBlur={handleBlur}>
                 <PlaneMesh position={[0, 0, -halfSize]} rotation={[0, 0, 0]} />
-
             </Interactive>
-
-            <Interactive onSelect={handleSelect} onMove={handleMove}>
-
+            <Interactive onSelect={handleSelect} onMove={handleMove} onBlur={handleBlur}>
                 <PlaneMesh position={[-halfSize, 0, 0]} rotation={[0, Math.PI / 2, 0]} />
-
             </Interactive>
-
-            <Interactive onSelect={handleSelect} onMove={handleMove}>
-
+            <Interactive onSelect={handleSelect} onMove={handleMove} onBlur={handleBlur}>
                 <PlaneMesh position={[halfSize, 0, 0]} rotation={[0, -Math.PI / 2, 0]} />
-
             </Interactive>
-
-            <Interactive onSelect={handleSelect} onMove={handleMove}>
-
+            <Interactive onSelect={handleSelect} onMove={handleMove} onBlur={handleBlur}>
                 <PlaneMesh position={[0, halfSize, 0]} rotation={[Math.PI / 2, 0, 0]} />
-
             </Interactive>
-
-            <Interactive onSelect={handleSelect} onMove={handleMove}>
-
+            <Interactive onSelect={handleSelect} onMove={handleMove} onBlur={handleBlur}>
                 <PlaneMesh position={[0, -halfSize, 0]} rotation={[-Math.PI / 2, 0, 0]} />
-
             </Interactive>
-
         </group>
-
     );
-
 };
 
 
