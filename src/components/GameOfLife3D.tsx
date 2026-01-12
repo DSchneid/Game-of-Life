@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { Canvas, useFrame, createPortal } from '@react-three/fiber';
 import { PerspectiveCamera, OrbitControls } from '@react-three/drei';
 import { VRButton, XR, Controllers, Hands, Interactive, useXR } from '@react-three/xr';
@@ -191,21 +191,23 @@ const InteractionLayer = ({ onToggleCell, onTogglePause }: {
     return (
         <group>
             {/* VR Beams and Targets */}
+            {/* 
             {isPresenting && controllers.map((controller, i) => {
                 const id = controller.inputSource?.handedness === 'right' ? 1 : 0;
                 const point = intersections.get(id);
                 return (
                     <React.Fragment key={i}>
-                        {/* Custom Beam attached to controller via Portal */}
+                        
                         {controller.controller && createPortal(
                             <LaserBeam controller={controller} />,
                             controller.controller
                         )}
-                        {/* Target hit point in World Space */}
+                        
                         {point && <TargetRing position={[point.x, point.y, point.z]} />}
                     </React.Fragment>
                 );
-            })}
+            })} 
+            */}
 
             {/* Desktop Cursor */}
             {!isPresenting && desktopCursor && (
@@ -710,7 +712,12 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
                     
                     <Controllers />
                     <Hands />
-                    <Locomotion />
+                    
+                    <Suspense fallback={null}>
+                        <VRLogger />
+                    </Suspense>
+
+                    {/* <Locomotion /> */}
 
                     <group position={[0, roomCenterY, 0]}>
                         <GridRenderingGroup grid={grid} colorMode="neon" />
