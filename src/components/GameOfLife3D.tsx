@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, createPortal } from '@react-three/fiber';
 import { PerspectiveCamera, OrbitControls } from '@react-three/drei';
 import { VRButton, XR, Controllers, Hands, Interactive, useXR } from '@react-three/xr';
 import * as THREE from 'three';
@@ -194,14 +194,15 @@ const InteractionLayer = ({ onToggleCell, onTogglePause }: {
                 const id = controller.inputSource?.handedness === 'right' ? 1 : 0;
                 const point = intersections.get(id);
                 return (
-                    <group key={i}>
-                        {/* Custom Beam attached to controller */}
-                        <primitive object={controller.controller}>
-                            <LaserBeam controller={controller} />
-                        </primitive>
-                        {/* Target hit point */}
+                    <React.Fragment key={i}>
+                        {/* Custom Beam attached to controller via Portal */}
+                        {createPortal(
+                            <LaserBeam controller={controller} />,
+                            controller.controller
+                        )}
+                        {/* Target hit point in World Space */}
                         {point && <TargetRing position={[point.x, point.y, point.z]} />}
-                    </group>
+                    </React.Fragment>
                 );
             })}
 
