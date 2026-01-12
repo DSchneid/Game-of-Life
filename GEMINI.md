@@ -20,7 +20,8 @@ The project features a cinematic entry experience, "Phosphor Persistence" render
 *   **`src/components/GameOfLife.tsx`**: The core 2D engine and immersive UI.
 *   **`src/components/GameOfLife3D.tsx`**: High-performance 3D engine using WebGL.
     *   **Instanced Rendering**: Uses `InstancedMesh` for efficient rendering of thousands of cells in a single draw call.
-    *   **Spatial Neighborhood**: Implements 3D Moore neighborhood (26 neighbors) with toroidal wrapping.
+    *   **Spatial Neighborhood**: Implements 3D Moore neighborhood (26 neighbors) with **strict bounds checking** (no toroidal wrapping) to prevent edge-case artifacts.
+    *   **Adaptive Geometry**: Cells on faces are flattened into panels, while edge and corner cells remain full cubes to ensure seamless visual transitions.
 *   **`src/utils/SoundEngine.ts`**: Singleton managing real-time sonification.
 
 ## Key Features
