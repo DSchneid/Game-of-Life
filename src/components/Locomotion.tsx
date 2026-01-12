@@ -14,8 +14,8 @@ export const Locomotion = ({ moveSpeed = 4, rotateSpeed = 2 }: LocomotionProps) 
 
     useFrame((_state, delta) => {
         // --- Movement (Left Stick) ---
-        const leftController = controllers.find(c => c.inputSource.handedness === 'left');
-        if (leftController && leftController.inputSource.gamepad && player) {
+        const leftController = controllers.find(c => c.inputSource?.handedness === 'left');
+        if (leftController && leftController.inputSource?.gamepad && player) {
             const axes = leftController.inputSource.gamepad.axes;
             // Standard mapping: 2 = X (left/right), 3 = Y (up/down)
             const dx = axes[2] || 0;
@@ -37,8 +37,8 @@ export const Locomotion = ({ moveSpeed = 4, rotateSpeed = 2 }: LocomotionProps) 
         }
 
         // --- Snap Turn (Right Stick) ---
-        const rightController = controllers.find(c => c.inputSource.handedness === 'right');
-        if (rightController && rightController.inputSource.gamepad && player) {
+        const rightController = controllers.find(c => c.inputSource?.handedness === 'right');
+        if (rightController && rightController.inputSource?.gamepad && player) {
             const axes = rightController.inputSource.gamepad.axes;
             const dx = axes[2] || 0;
 
