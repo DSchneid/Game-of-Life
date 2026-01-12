@@ -191,23 +191,21 @@ const InteractionLayer = ({ onToggleCell, onTogglePause }: {
     return (
         <group>
             {/* VR Beams and Targets */}
-            {/* 
             {isPresenting && controllers.map((controller, i) => {
                 const id = controller.inputSource?.handedness === 'right' ? 1 : 0;
                 const point = intersections.get(id);
                 return (
                     <React.Fragment key={i}>
-                        
+                        {/* Custom Beam attached to controller via Portal */}
                         {controller.controller && createPortal(
                             <LaserBeam controller={controller} />,
                             controller.controller
                         )}
-                        
+                        {/* Target hit point in World Space */}
                         {point && <TargetRing position={[point.x, point.y, point.z]} />}
                     </React.Fragment>
                 );
-            })} 
-            */}
+            })}
 
             {/* Desktop Cursor */}
             {!isPresenting && desktopCursor && (
@@ -263,7 +261,9 @@ const FaceInstancedMesh = ({
     const colorHelper = useMemo(() => new THREE.Color(), []);
 
     // Calculate max possible instances for this face (approx Width * Height)
-    const instanceCount = TOTAL_CELLS; 
+    // Optimization: Each face is a 2D plane of 32x32 cells = 1024.
+    // We don't need to allocate buffer for TOTAL_CELLS (32k).
+    const instanceCount = WIDTH * HEIGHT; 
 
     useEffect(() => {
         if (!meshRef.current) return;
@@ -712,12 +712,11 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
                     
                     <Controllers />
                     <Hands />
+                    <Locomotion />
                     
-                    <Suspense fallback={null}>
+                    {/* <Suspense fallback={null}>
                         <VRLogger />
-                    </Suspense>
-
-                    {/* <Locomotion /> */}
+                    </Suspense> */}
 
                     <group position={[0, roomCenterY, 0]}>
                         <GridRenderingGroup grid={grid} colorMode="neon" />
