@@ -84,9 +84,9 @@ const InteractionLayer = ({ onToggleCell, onTogglePause }: {
 
     useFrame(() => {
 
-        const rightController = controllers.find(c => c.inputSource.handedness === 'right');
+        const rightController = controllers.find(c => c.inputSource?.handedness === 'right');
 
-        if (rightController?.inputSource.gamepad) {
+        if (rightController?.inputSource?.gamepad) {
 
             const gamepad = rightController.inputSource.gamepad;
 
@@ -370,35 +370,115 @@ const CellInstancedMesh = ({ grid, colorMode }: { grid: Grid3DType, colorMode: '
 
                 
 
-                // New Centered Positioning
+                                // New Centered Positioning
 
-                dummy.position.set(
+                
 
-                    (x - offset) * SPACING,
+                                dummy.position.set(
 
-                    (y - offset) * SPACING,
+                
 
-                    (z - offset) * SPACING
+                                    (x - offset) * SPACING,
 
-                );
+                
 
+                                    (y - offset) * SPACING,
 
+                
 
-                // Flatten the cells based on which wall they are on to look like 2D panels
+                                    (z - offset) * SPACING
 
-                let sx = 0.9, sy = 0.9, sz = 0.9;
+                
 
-                if (x === 0 || x === WIDTH - 1) sx = 0.05;
+                                );
 
-                if (y === 0 || y === HEIGHT - 1) sy = 0.05;
+                
 
-                if (z === 0 || z === DEPTH - 1) sz = 0.05;
+                
 
+                
 
+                                // Determine if cell is on a face, edge, or corner
 
-                dummy.scale.set(sx * SPACING, sy * SPACING, sz * SPACING);
+                
 
-                dummy.updateMatrix();
+                                const onX = x === 0 || x === WIDTH - 1;
+
+                
+
+                                const onY = y === 0 || y === HEIGHT - 1;
+
+                
+
+                                const onZ = z === 0 || z === DEPTH - 1;
+
+                
+
+                                const faces = (onX ? 1 : 0) + (onY ? 1 : 0) + (onZ ? 1 : 0);
+
+                
+
+                
+
+                
+
+                                let sx = 0.9, sy = 0.9, sz = 0.9;
+
+                
+
+                                
+
+                
+
+                                if (faces > 1) {
+
+                
+
+                                    // Edge or Corner: Keep as full cube to fill gaps/overlaps visually
+
+                
+
+                                    // This fixes the "squares appear as lines" issue at borders
+
+                
+
+                                    sx = 0.9; sy = 0.9; sz = 0.9;
+
+                
+
+                                } else {
+
+                
+
+                                    // Face Center: Flatten to look like a panel
+
+                
+
+                                    if (onX) sx = 0.05;
+
+                
+
+                                    if (onY) sy = 0.05;
+
+                
+
+                                    if (onZ) sz = 0.05;
+
+                
+
+                                }
+
+                
+
+                
+
+                
+
+                                dummy.scale.set(sx * SPACING, sy * SPACING, sz * SPACING);
+
+                
+
+                                dummy.updateMatrix();
 
                 meshRef.current.setMatrixAt(i, dummy.matrix);
 
@@ -488,13 +568,13 @@ interface GameOfLife3DProps {
 
 const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
 
-    const [grid, setGrid] = useState<Grid3DType>(generateRandomGrid);
+        const [grid, setGrid] = useState<Grid3DType>(generateRandomGrid);
 
-    const [running, setRunning] = useState(false);
+        const [running, setRunning] = useState(false);
 
-    const [speed, setSpeed] = useState(100);
+        const [speed, setSpeed] = useState(150);
 
-    const [selectedRule, setSelectedRule] = useState(RULE_SETS_3D[0]);
+        const [selectedRule, setSelectedRule] = useState(RULE_SETS_3D[0]);
 
     
 
@@ -550,41 +630,99 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
 
                         
 
-                        // Check 26 neighbors in 3D space
+                                                // Check 26 neighbors in 3D space
 
-                        for (let dx = -1; dx <= 1; dx++) {
+                        
 
-                            for (let dy = -1; dy <= 1; dy++) {
+                                                for (let dx = -1; dx <= 1; dx++) {
 
-                                for (let dz = -1; dz <= 1; dz++) {
+                        
 
-                                    if (dx === 0 && dy === 0 && dz === 0) continue;
+                                                    for (let dy = -1; dy <= 1; dy++) {
 
-                                    
+                        
 
-                                    const nx = (x + dx + WIDTH) % WIDTH;
+                                                        for (let dz = -1; dz <= 1; dz++) {
 
-                                    const ny = (y + dy + HEIGHT) % HEIGHT;
+                        
 
-                                    const nz = (z + dz + DEPTH) % DEPTH;
+                                                            if (dx === 0 && dy === 0 && dz === 0) continue;
 
-                                    
+                        
 
-                                    // CRITICAL: Only count neighbors that are ALSO on the shell
+                                                            
 
-                                    // This prevents growth into the void
+                        
 
-                                    if (isShell(nx, ny, nz) && prevGrid[getIndex(nx, ny, nz)] > 0) {
+                                                            // No Wrapping - Strict Bounds Checking
 
-                                        neighbors++;
+                        
 
-                                    }
+                                                            // This prevents "action-at-a-distance" across the void
 
-                                }
+                        
 
-                            }
+                                                            const nx = x + dx;
 
-                        }
+                        
+
+                                                            const ny = y + dy;
+
+                        
+
+                                                            const nz = z + dz;
+
+                        
+
+                        
+
+                        
+
+                                                            if (nx < 0 || nx >= WIDTH || 
+
+                        
+
+                                                                ny < 0 || ny >= HEIGHT || 
+
+                        
+
+                                                                nz < 0 || nz >= DEPTH) continue;
+
+                        
+
+                                                            
+
+                        
+
+                                                            // CRITICAL: Only count neighbors that are ALSO on the shell
+
+                        
+
+                                                            // This prevents growth into the void
+
+                        
+
+                                                            if (isShell(nx, ny, nz) && prevGrid[getIndex(nx, ny, nz)] > 0) {
+
+                        
+
+                                                                neighbors++;
+
+                        
+
+                                                            }
+
+                        
+
+                                                        }
+
+                        
+
+                                                    }
+
+                        
+
+                                                }
 
 
 
