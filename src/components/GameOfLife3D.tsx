@@ -5,6 +5,7 @@ import { VRButton, XR, Controllers, Hands, Interactive, useXR } from '@react-thr
 import * as THREE from 'three';
 import { getIndex, getCoords, isShell, calculateCellTransform } from '../utils/gridGeometry';
 import { Locomotion } from './Locomotion';
+import { VRLogger } from './VRLogger';
 
 // --- Types ---
 type Grid3DType = Uint8Array; 
@@ -196,7 +197,7 @@ const InteractionLayer = ({ onToggleCell, onTogglePause }: {
                 return (
                     <React.Fragment key={i}>
                         {/* Custom Beam attached to controller via Portal */}
-                        {createPortal(
+                        {controller.controller && createPortal(
                             <LaserBeam controller={controller} />,
                             controller.controller
                         )}
