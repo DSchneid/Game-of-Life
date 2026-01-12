@@ -326,20 +326,22 @@ const FaceInstancedMesh = ({
     grid, 
     colorMode, 
     faceNormal,
-    faceFilter
+    faceFilter,
+    fixedAxis,
+    fixedValue
 }: { 
     grid: Grid3DType, 
     colorMode: 'neon' | 'heat',
     faceNormal: THREE.Vector3,
-    faceFilter: (x: number, y: number, z: number) => boolean
+    faceFilter: (x: number, y: number, z: number) => boolean,
+    fixedAxis: 'x' | 'y' | 'z',
+    fixedValue: number
 }) => {
     const meshRef = useRef<THREE.InstancedMesh>(null);
     const dummy = useMemo(() => new THREE.Object3D(), []);
     const colorHelper = useMemo(() => new THREE.Color(), []);
 
     // Calculate max possible instances for this face (approx Width * Height)
-    // We can just use TOTAL_CELLS to be safe, or calculate strictly.
-    // Since we are iterating total cells anyway, let's keep it simple.
     const instanceCount = TOTAL_CELLS; 
 
     useEffect(() => {
@@ -357,11 +359,17 @@ const FaceInstancedMesh = ({
                 if (!faceFilter(x, y, z)) continue;
 
                 // Position
-                dummy.position.set(
-                    (x - offset) * SPACING,
-                    (y - offset) * SPACING,
-                    (z - offset) * SPACING
-                );
+                let px = (x - offset) * SPACING;
+                let py = (y - offset) * SPACING;
+                let pz = (z - offset) * SPACING;
+
+                // PROJECT TO SURFACE
+                // This ensures the cell is visually "on" the cube face, not floating inside at the grid center.
+                if (fixedAxis === 'x') px = fixedValue;
+                if (fixedAxis === 'y') py = fixedValue;
+                if (fixedAxis === 'z') pz = fixedValue;
+
+                dummy.position.set(px, py, pz);
 
                 // Align Rotation: Face "up" is along the normal
                 // We want the panel (XY plane usually) to face the normal.
@@ -397,7 +405,7 @@ const FaceInstancedMesh = ({
 
         meshRef.current.instanceMatrix.needsUpdate = true;
         if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
-    }, [grid, colorMode, dummy, colorHelper, faceFilter, faceNormal, instanceCount]);
+    }, [grid, colorMode, dummy, colorHelper, faceFilter, faceNormal, instanceCount, fixedAxis, fixedValue]);
 
     return (
         <instancedMesh ref={meshRef} args={[undefined, undefined, instanceCount]}>
@@ -434,14 +442,17 @@ const GridRenderingGroup = ({ grid, colorMode }: { grid: Grid3DType, colorMode: 
     const fFront = useCallback((_x: number, _y: number, z: number) => z === DEPTH - 1, []);
     const fBack = useCallback((_x: number, _y: number, z: number) => z === 0, []);
 
+    // Wall Distance
+    const wallDist = (WIDTH * SPACING) / 2; // 8.0
+
     return (
         <group>
-            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nRight} faceFilter={fRight} />
-            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nLeft} faceFilter={fLeft} />
-            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nTop} faceFilter={fTop} />
-            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nBottom} faceFilter={fBottom} />
-            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nFront} faceFilter={fFront} />
-            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nBack} faceFilter={fBack} />
+            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nRight} faceFilter={fRight} fixedAxis="x" fixedValue={wallDist} />
+            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nLeft} faceFilter={fLeft} fixedAxis="x" fixedValue={-wallDist} />
+            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nTop} faceFilter={fTop} fixedAxis="y" fixedValue={wallDist} />
+            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nBottom} faceFilter={fBottom} fixedAxis="y" fixedValue={-wallDist} />
+            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nFront} faceFilter={fFront} fixedAxis="z" fixedValue={wallDist} />
+            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nBack} faceFilter={fBack} fixedAxis="z" fixedValue={-wallDist} />
         </group>
     );
 };
