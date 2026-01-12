@@ -4,6 +4,7 @@ import { PerspectiveCamera, OrbitControls } from '@react-three/drei';
 import { VRButton, XR, Controllers, Hands, Interactive, useXR } from '@react-three/xr';
 import * as THREE from 'three';
 import { getIndex, getCoords, isShell, calculateCellTransform } from '../utils/gridGeometry';
+import { Locomotion } from './Locomotion';
 
 // --- Types ---
 type Grid3DType = Uint8Array; 
@@ -12,7 +13,7 @@ const WIDTH = 32;
 const HEIGHT = 32;
 const DEPTH = 32;
 const TOTAL_CELLS = WIDTH * HEIGHT * DEPTH;
-const SPACING = 0.5;
+const SPACING = 0.25;
 
 interface RuleSet3D {
   name: string;
@@ -209,7 +210,7 @@ const InteractionLayer = ({ onToggleCell, onTogglePause }: {
                 <TargetRing position={[desktopCursor.x, desktopCursor.y, desktopCursor.z]} />
             )}
 
-            {!isPresenting && <OrbitControls makeDefault enablePan={false} minDistance={1} maxDistance={50} />}
+            {!isPresenting && <OrbitControls makeDefault target={[0, 0, 0]} enablePan={false} minDistance={1} maxDistance={50} />}
 
             {/* Sensing Planes */}
             <Interactive onSelect={handleSelect} onMove={handleMove} onBlur={handleBlur}>
@@ -673,97 +674,48 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
 
 
 
-        const handleToggleCell = useCallback((x: number, y: number, z: number) => {
+    const handleToggleCell = useCallback((x: number, y: number, z: number) => {
+        if (!isShell(x,y,z, WIDTH, HEIGHT, DEPTH)) return; // Prevent painting in void
+        setGrid(prev => {
+            const next = new Uint8Array(prev);
+            const idx = getIndex(x, y, z, WIDTH, HEIGHT);
+            next[idx] = next[idx] > 0 ? 0 : 1;
+            return next;
+        });
+    }, []);
 
-
-
-            if (!isShell(x,y,z, WIDTH, HEIGHT, DEPTH)) return; // Prevent painting in void
-
-
-
-            setGrid(prev => {
-
-
-
-                const next = new Uint8Array(prev);
-
-
-
-                const idx = getIndex(x, y, z, WIDTH, HEIGHT);
-
-
-
-                next[idx] = next[idx] > 0 ? 0 : 1;
-
-
-
-                return next;
-
-
-
-            });
-
-
-
-        }, []);
-
-
+    const wallSize = WIDTH * SPACING;
+    const halfSize = wallSize / 2;
+    // We want the room floor to be at Y=0.
+    // The GridRenderingGroup is centered at (0,0,0) by default.
+    // If we move it up by halfSize, the bottom wall (y = -halfSize relative to group) will be at Y=0.
+    const roomCenterY = halfSize;
 
     return (
-
         <div className="game-container immersive 3d-mode" style={{ position: 'relative', width: '100%', height: '100%' }}>
-
             <VRButton />
-
             <Canvas shadows dpr={[1, 2]}>
-
                 <color attach="background" args={['#050505']} />
-
-                <fog attach="fog" args={['#050505', 10, 50]} />
-
+                <fog attach="fog" args={['#050505', 2, 20]} />
                 
-
                 <XR>
-
-                    <PerspectiveCamera makeDefault position={[0, 0, 0]} fov={70} />
-
+                    <PerspectiveCamera makeDefault position={[0, 1.6, 4]} fov={70} />
                     
-
                     <ambientLight intensity={0.6} />
-
-                    <pointLight position={[0, 0, 0]} intensity={2} distance={20} decay={2} />
-
+                    <pointLight position={[0, roomCenterY, 0]} intensity={2} distance={20} decay={2} />
                     <pointLight position={[10, 10, 10]} intensity={1.5} color="#bd34fe" />
-
                     <pointLight position={[-10, -10, -10]} intensity={1.5} color="#61dafb" />
-
                     
-
                     <Controllers />
-
                     <Hands />
+                    <Locomotion />
 
-
-
-                                        <group position={[0, 0, 0]}>
-
-
-
-                                            <GridRenderingGroup grid={grid} colorMode="neon" />
-
-
-
-                                            <InteractionLayer onToggleCell={handleToggleCell} onTogglePause={handleStartStop} />
-
-
-
-                                        </group>
-
+                    <group position={[0, roomCenterY, 0]}>
+                        <GridRenderingGroup grid={grid} colorMode="neon" />
+                        <InteractionLayer onToggleCell={handleToggleCell} onTogglePause={handleStartStop} />
+                    </group>
                 </XR>
-
             </Canvas>
-
-
 
             {/* HUD */}
 
