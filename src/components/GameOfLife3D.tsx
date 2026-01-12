@@ -3,6 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { PerspectiveCamera, OrbitControls } from '@react-three/drei';
 import { VRButton, XR, Controllers, Hands, Interactive, useXR } from '@react-three/xr';
 import * as THREE from 'three';
+import { getIndex, getCoords, isShell, calculateCellTransform } from '../utils/gridGeometry';
 
 // --- Types ---
 type Grid3DType = Uint8Array; 
@@ -26,21 +27,6 @@ const RULE_SETS_3D: RuleSet3D[] = [
     { name: 'Day & Night (2D Surface)', born: [3, 6, 7, 8], survive: [3, 4, 6, 7, 8] },
 ];
 
-const getIndex = (x: number, y: number, z: number) => x + y * WIDTH + z * WIDTH * HEIGHT;
-
-const getCoords = (index: number) => {
-    const z = Math.floor(index / (WIDTH * HEIGHT));
-    const rem = index % (WIDTH * HEIGHT);
-    const y = Math.floor(rem / WIDTH);
-    const x = rem % WIDTH;
-    return { x, y, z };
-};
-
-// Helper to check if a coordinate is on the "Shell" (Faces of the cube)
-const isShell = (x: number, y: number, z: number) => {
-    return x === 0 || x === WIDTH - 1 || y === 0 || y === HEIGHT - 1 || z === 0 || z === DEPTH - 1;
-};
-
 // --- Logic Helpers ---
 
 const generateEmptyGrid = (): Grid3DType => new Uint8Array(TOTAL_CELLS);
@@ -50,8 +36,8 @@ const generateRandomGrid = (): Grid3DType => {
     for (let x = 0; x < WIDTH; x++) {
         for (let y = 0; y < HEIGHT; y++) {
             for (let z = 0; z < DEPTH; z++) {
-                if (isShell(x, y, z)) {
-                    const idx = getIndex(x, y, z);
+                if (isShell(x, y, z, WIDTH, HEIGHT, DEPTH)) {
+                    const idx = getIndex(x, y, z, WIDTH, HEIGHT);
                     grid[idx] = Math.random() > 0.75 ? 1 : 0;
                 }
             }
@@ -336,220 +322,128 @@ const InteractionLayer = ({ onToggleCell, onTogglePause }: {
 
 // --- Components ---
 
-
-
-const CellInstancedMesh = ({ grid, colorMode }: { grid: Grid3DType, colorMode: 'neon' | 'heat' }) => {
-
+const FaceInstancedMesh = ({ 
+    grid, 
+    colorMode, 
+    faceNormal,
+    faceFilter
+}: { 
+    grid: Grid3DType, 
+    colorMode: 'neon' | 'heat',
+    faceNormal: THREE.Vector3,
+    faceFilter: (x: number, y: number, z: number) => boolean
+}) => {
     const meshRef = useRef<THREE.InstancedMesh>(null);
-
     const dummy = useMemo(() => new THREE.Object3D(), []);
-
     const colorHelper = useMemo(() => new THREE.Color(), []);
 
-
+    // Calculate max possible instances for this face (approx Width * Height)
+    // We can just use TOTAL_CELLS to be safe, or calculate strictly.
+    // Since we are iterating total cells anyway, let's keep it simple.
+    const instanceCount = TOTAL_CELLS; 
 
     useEffect(() => {
-
         if (!meshRef.current) return;
-
         
-
-        // Centering Offset
-
         const offset = (WIDTH - 1) / 2;
-
-
+        let instanceIdx = 0;
 
         for (let i = 0; i < TOTAL_CELLS; i++) {
-
             const age = grid[i];
-
             if (age > 0) {
-
-                const { x, y, z } = getCoords(i);
-
+                const { x, y, z } = getCoords(i, WIDTH, HEIGHT);
                 
-
-                                // New Centered Positioning
-
-                
-
-                                dummy.position.set(
-
-                
-
-                                    (x - offset) * SPACING,
-
-                
-
-                                    (y - offset) * SPACING,
-
-                
-
-                                    (z - offset) * SPACING
-
-                
-
-                                );
-
-                
-
-                
-
-                
-
-                                // Determine if cell is on a face, edge, or corner
-
-                
-
-                                const onX = x === 0 || x === WIDTH - 1;
-
-                
-
-                                const onY = y === 0 || y === HEIGHT - 1;
-
-                
-
-                                const onZ = z === 0 || z === DEPTH - 1;
-
-                
-
-                                const faces = (onX ? 1 : 0) + (onY ? 1 : 0) + (onZ ? 1 : 0);
-
-                
-
-                
-
-                
-
-                                let sx = 0.9, sy = 0.9, sz = 0.9;
-
-                
-
-                                
-
-                
-
-                                if (faces > 1) {
-
-                
-
-                                    // Edge or Corner: Keep as full cube to fill gaps/overlaps visually
-
-                
-
-                                    // This fixes the "squares appear as lines" issue at borders
-
-                
-
-                                    sx = 0.9; sy = 0.9; sz = 0.9;
-
-                
-
-                                } else {
-
-                
-
-                                    // Face Center: Flatten to look like a panel
-
-                
-
-                                    if (onX) sx = 0.05;
-
-                
-
-                                    if (onY) sy = 0.05;
-
-                
-
-                                    if (onZ) sz = 0.05;
-
-                
-
-                                }
-
-                
-
-                
-
-                
-
-                                dummy.scale.set(sx * SPACING, sy * SPACING, sz * SPACING);
-
-                
-
-                                dummy.updateMatrix();
-
-                meshRef.current.setMatrixAt(i, dummy.matrix);
-
-                
-
-                if (colorMode === 'neon') {
-
-                     const hue = (x * 5 + y * 5 + z * 5 + age * 10) % 360;
-
-                     colorHelper.setHSL(hue / 360, 1.0, 0.6); 
-
-                } else {
-
-                     const intensity = Math.min(age * 0.1, 1);
-
-                     colorHelper.setHSL(0.1 - (intensity * 0.1), 1, 0.5 + (intensity * 0.4));
-
-                }
-
-                
-
-                meshRef.current.setColorAt(i, colorHelper);
-
-            } else {
-
-                dummy.scale.set(0, 0, 0);
-
+                // Only render if this cell belongs to this face
+                if (!faceFilter(x, y, z)) continue;
+
+                // Position
+                dummy.position.set(
+                    (x - offset) * SPACING,
+                    (y - offset) * SPACING,
+                    (z - offset) * SPACING
+                );
+
+                // Align Rotation: Face "up" is along the normal
+                // We want the panel (XY plane usually) to face the normal.
+                const up = new THREE.Vector3(0, 0, 1);
+                dummy.quaternion.setFromUnitVectors(up, faceNormal);
+
+                // Scale: Panel is flat.
+                // 0.9 size, 0.05 thickness
+                dummy.scale.set(0.9 * SPACING, 0.9 * SPACING, 0.05 * SPACING);
                 dummy.updateMatrix();
 
-                meshRef.current.setMatrixAt(i, dummy.matrix);
-
+                meshRef.current.setMatrixAt(instanceIdx, dummy.matrix);
+                
+                if (colorMode === 'neon') {
+                     const hue = (x * 5 + y * 5 + z * 5 + age * 10) % 360;
+                     colorHelper.setHSL(hue / 360, 1.0, 0.6); 
+                } else {
+                     const intensity = Math.min(age * 0.1, 1);
+                     colorHelper.setHSL(0.1 - (intensity * 0.1), 1, 0.5 + (intensity * 0.4));
+                }
+                
+                meshRef.current.setColorAt(instanceIdx, colorHelper);
+                instanceIdx++;
             }
-
+        }
+        
+        // Zero out remaining instances
+        for (let j = instanceIdx; j < instanceCount; j++) {
+            dummy.scale.set(0, 0, 0);
+            dummy.updateMatrix();
+            meshRef.current.setMatrixAt(j, dummy.matrix);
         }
 
-        
-
         meshRef.current.instanceMatrix.needsUpdate = true;
-
         if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
-
-    }, [grid, colorMode, dummy, colorHelper]);
-
-
+    }, [grid, colorMode, dummy, colorHelper, faceFilter, faceNormal, instanceCount]);
 
     return (
-
-        <instancedMesh ref={meshRef} args={[undefined, undefined, TOTAL_CELLS]}>
-
+        <instancedMesh ref={meshRef} args={[undefined, undefined, instanceCount]}>
             <boxGeometry args={[1, 1, 1]} />
-
             <meshStandardMaterial 
-
                 transparent 
-
                 opacity={0.9} 
-
                 roughness={0.2} 
-
                 metalness={0.1} 
-
                 emissive={new THREE.Color(0x222222)} 
-
                 emissiveIntensity={0.5}
-
             />
-
         </instancedMesh>
-
     );
+};
 
+const GridRenderingGroup = ({ grid, colorMode }: { grid: Grid3DType, colorMode: 'neon' | 'heat' }) => {
+    // We render 6 faces. 
+    // Cells on edges/corners will be picked up by multiple faces and rendered as multiple panels.
+    
+    // Normals
+    const nRight = useMemo(() => new THREE.Vector3(1, 0, 0), []);
+    const nLeft = useMemo(() => new THREE.Vector3(-1, 0, 0), []);
+    const nTop = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+    const nBottom = useMemo(() => new THREE.Vector3(0, -1, 0), []);
+    const nFront = useMemo(() => new THREE.Vector3(0, 0, 1), []);
+    const nBack = useMemo(() => new THREE.Vector3(0, 0, -1), []);
+
+    // Filters
+    const fRight = useCallback((x: number, _y: number, _z: number) => x === WIDTH - 1, []);
+    const fLeft = useCallback((x: number, _y: number, _z: number) => x === 0, []);
+    const fTop = useCallback((_x: number, y: number, _z: number) => y === HEIGHT - 1, []);
+    const fBottom = useCallback((_x: number, y: number, _z: number) => y === 0, []);
+    const fFront = useCallback((_x: number, _y: number, z: number) => z === DEPTH - 1, []);
+    const fBack = useCallback((_x: number, _y: number, z: number) => z === 0, []);
+
+    return (
+        <group>
+            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nRight} faceFilter={fRight} />
+            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nLeft} faceFilter={fLeft} />
+            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nTop} faceFilter={fTop} />
+            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nBottom} faceFilter={fBottom} />
+            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nFront} faceFilter={fFront} />
+            <FaceInstancedMesh grid={grid} colorMode={colorMode} faceNormal={nBack} faceFilter={fBack} />
+        </group>
+    );
 };
 
 
@@ -598,35 +492,35 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
 
     // Simulation Step (Shell Only)
 
-    const runStep = useCallback(() => {
+        const runStep = useCallback(() => {
 
-        setGrid((prevGrid) => {
+            setGrid((prevGrid) => {
 
-            const nextGrid = new Uint8Array(TOTAL_CELLS);
+                const nextGrid = new Uint8Array(TOTAL_CELLS);
 
-            const { born, survive } = ruleRef.current;
+                const { born, survive } = ruleRef.current;
 
+    
 
+                for (let x = 0; x < WIDTH; x++) {
 
-            for (let x = 0; x < WIDTH; x++) {
+                    for (let y = 0; y < HEIGHT; y++) {
 
-                for (let y = 0; y < HEIGHT; y++) {
+                        for (let z = 0; z < DEPTH; z++) {
 
-                    for (let z = 0; z < DEPTH; z++) {
+                            // Skip if inside the cube (not on shell)
 
-                        // Skip if inside the cube (not on shell)
+                            if (!isShell(x, y, z, WIDTH, HEIGHT, DEPTH)) continue;
 
-                        if (!isShell(x, y, z)) continue;
+    
 
+                            const idx = getIndex(x, y, z, WIDTH, HEIGHT);
 
+                            const selfAlive = prevGrid[idx] > 0;
 
-                        const idx = getIndex(x, y, z);
+                            
 
-                        const selfAlive = prevGrid[idx] > 0;
-
-                        
-
-                        let neighbors = 0;
+                            let neighbors = 0;
 
                         
 
@@ -694,23 +588,71 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
 
                         
 
-                                                            // CRITICAL: Only count neighbors that are ALSO on the shell
+                                                                                                                        // CRITICAL: Only count neighbors that are ALSO on the shell
 
                         
 
-                                                            // This prevents growth into the void
+                                                            
 
                         
 
-                                                            if (isShell(nx, ny, nz) && prevGrid[getIndex(nx, ny, nz)] > 0) {
+                                                                                    
 
                         
 
-                                                                neighbors++;
+                                                            
 
                         
 
-                                                            }
+                                                                                                                        // This prevents growth into the void
+
+                        
+
+                                                            
+
+                        
+
+                                                                                    
+
+                        
+
+                                                            
+
+                        
+
+                                                                                                                        if (isShell(nx, ny, nz, WIDTH, HEIGHT, DEPTH) && prevGrid[getIndex(nx, ny, nz, WIDTH, HEIGHT)] > 0) {
+
+                        
+
+                                                            
+
+                        
+
+                                                                                    
+
+                        
+
+                                                            
+
+                        
+
+                                                                                                                            neighbors++;
+
+                        
+
+                                                            
+
+                        
+
+                                                                                    
+
+                        
+
+                                                            
+
+                        
+
+                                                                                                                        }
 
                         
 
@@ -804,23 +746,39 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
 
 
 
-    const handleToggleCell = useCallback((x: number, y: number, z: number) => {
+        const handleToggleCell = useCallback((x: number, y: number, z: number) => {
 
-        if (!isShell(x,y,z)) return; // Prevent painting in void
 
-        setGrid(prev => {
 
-            const next = new Uint8Array(prev);
+            if (!isShell(x,y,z, WIDTH, HEIGHT, DEPTH)) return; // Prevent painting in void
 
-            const idx = getIndex(x, y, z);
 
-            next[idx] = next[idx] > 0 ? 0 : 1;
 
-            return next;
+            setGrid(prev => {
 
-        });
 
-    }, []);
+
+                const next = new Uint8Array(prev);
+
+
+
+                const idx = getIndex(x, y, z, WIDTH, HEIGHT);
+
+
+
+                next[idx] = next[idx] > 0 ? 0 : 1;
+
+
+
+                return next;
+
+
+
+            });
+
+
+
+        }, []);
 
 
 
@@ -860,13 +818,19 @@ const GameOfLife3D: React.FC<GameOfLife3DProps> = ({ enableUI = true }) => {
 
 
 
-                    <group position={[0, 0, 0]}>
+                                        <group position={[0, 0, 0]}>
 
-                        <CellInstancedMesh grid={grid} colorMode="neon" />
 
-                        <InteractionLayer onToggleCell={handleToggleCell} onTogglePause={handleStartStop} />
 
-                    </group>
+                                            <GridRenderingGroup grid={grid} colorMode="neon" />
+
+
+
+                                            <InteractionLayer onToggleCell={handleToggleCell} onTogglePause={handleStartStop} />
+
+
+
+                                        </group>
 
                 </XR>
 

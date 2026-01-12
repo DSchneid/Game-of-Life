@@ -21,7 +21,7 @@ The project features a cinematic entry experience, "Phosphor Persistence" render
 *   **`src/components/GameOfLife3D.tsx`**: High-performance 3D engine using WebGL.
     *   **Instanced Rendering**: Uses `InstancedMesh` for efficient rendering of thousands of cells in a single draw call.
     *   **Spatial Neighborhood**: Implements 3D Moore neighborhood (26 neighbors) with **strict bounds checking** (no toroidal wrapping) to prevent edge-case artifacts.
-    *   **Adaptive Geometry**: Cells on faces are flattened into panels, while edge and corner cells remain full cubes to ensure seamless visual transitions.
+    *   **Adaptive Geometry**: Logic extracted to `src/utils/gridGeometry.ts`. Uses surface-normal alignment to render all cells (including edges/corners) as flat panels ("Chamfered Panels") ensuring seamless visual transitions without "blocky" artifacts.
 *   **`src/utils/SoundEngine.ts`**: Singleton managing real-time sonification.
 
 ## Key Features
